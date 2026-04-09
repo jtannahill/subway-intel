@@ -7,5 +7,6 @@ node_modules/
 dist/
 .superpowers/
 cdk.out/
+cdk/cdk.context.json
 *.egg-info/
 .venv/

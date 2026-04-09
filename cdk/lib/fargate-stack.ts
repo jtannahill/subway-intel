@@ -36,9 +36,11 @@ export class FargateStack extends cdk.Stack {
         environment: { GTFS_POLL_INTERVAL_SEC: '30' },
         secrets: {
           MTA_API_KEY: ecs.Secret.fromSecretsManager(mtaSecret),
-          DATABASE_URL: ecs.Secret.fromSecretsManager(
-            props.dbInstance.secret!, 'DATABASE_URL'
-          ),
+          DB_HOST:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'host'),
+          DB_PORT:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'port'),
+          DB_NAME:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'dbname'),
+          DB_USER:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'username'),
+          DB_PASS:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'password'),
         },
       },
       publicLoadBalancer: true,

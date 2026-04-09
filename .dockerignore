@@ -1,0 +1,8 @@
+cdk/
+cdk.out/
+frontend/
+docs/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+**/*.egg-info/

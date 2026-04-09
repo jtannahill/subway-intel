@@ -12,6 +12,8 @@ logger = logging.getLogger(__name__)
 
 GTFS_STATIC_URL = 'http://web.mta.info/developers/data/nyct/subway/google_transit.zip'
 
+# load() must be called once at startup (before the async event loop starts).
+# Reads are safe after that. Do NOT call load() from a background thread.
 # stop_id -> {name: str, routes: list[str]}
 _stops: dict[str, dict] = {}
 # (origin_stop_id, dest_stop_id) -> travel_sec  (naive: same trip lookup)

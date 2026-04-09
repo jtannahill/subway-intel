@@ -2,7 +2,7 @@ from __future__ import annotations
 from collections import defaultdict
 from statistics import mean
 
-from backend.gtfs.models import ArrivalRecord, LineHealth, LineStatus
+from backend.gtfs.models import ArrivalRecord, LineHealth
 
 
 def compute_delay_signals(records: list[ArrivalRecord]) -> dict[str, dict]:

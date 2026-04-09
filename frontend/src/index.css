@@ -1,3 +1,9 @@
+@import "tailwindcss";
+
+@theme {
+  --font-mono: "JetBrains Mono", "Fira Code", "Courier New", monospace;
+}
+
 :root {
   --text: #6b6375;
   --text-h: #08060d;

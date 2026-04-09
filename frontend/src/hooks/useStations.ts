@@ -21,11 +21,6 @@ function loadFromStorage(): SavedStation[] {
 export function useStations() {
   const [stations, setStations] = useState<SavedStation[]>(loadFromStorage)
 
-  const persist = useCallback((next: SavedStation[]) => {
-    setStations(next)
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next))
-  }, [])
-
   const addStation = useCallback((station: SavedStation) => {
     setStations((prev) => {
       if (prev.length >= MAX_STATIONS) return prev

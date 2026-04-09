@@ -1,8 +1,9 @@
 from __future__ import annotations
 import threading
-from collections import defaultdict
+from collections import defaultdict, deque
 from datetime import datetime, timezone
 from statistics import mean, variance
+from typing import Any
 
 from backend.gtfs.models import ArrivalRecord, LineHealth, LineStatus, ServiceAlert
 
@@ -14,47 +15,41 @@ class LiveState:
         self._lock = threading.Lock()
         # stop_id → list of upcoming ArrivalRecords
         self._arrivals: dict[str, list[ArrivalRecord]] = defaultdict(list)
-        # route_id → list of recent delay_sec values (capped at 100)
-        self._delay_history: dict[str, list[int]] = defaultdict(list)
-        # route_id → list of recent headways (seconds between consecutive trains)
-        self._headways: dict[str, list[float]] = defaultdict(list)
+        # route_id → deque of recent delay_sec values (capped at 100)
+        self._delay_history: dict[str, deque] = defaultdict(lambda: deque(maxlen=100))
+        # route_id → deque of recent headways (seconds between consecutive trains)
+        self._headways: dict[str, deque] = defaultdict(lambda: deque(maxlen=50))
         # route_id → list of active alert headers
         self._alerts: dict[str, list[str]] = defaultdict(list)
 
     def ingest(self, records: list[ArrivalRecord], alerts: list[ServiceAlert]) -> None:
         now = datetime.now(timezone.utc)
         with self._lock:
-            # Reset arrivals; only keep future ones
+            # Only keep future arrivals
+            future = [r for r in records if r.arrival_time > now]
+
+            # Reset arrivals with future records only
             self._arrivals.clear()
-            for r in records:
-                if r.arrival_time > now:
-                    self._arrivals[r.stop_id].append(r)
+            for r in future:
+                self._arrivals[r.stop_id].append(r)
 
-            # Update delay history per route (cap at 100 samples)
-            for r in records:
-                history = self._delay_history[r.route_id]
-                history.append(r.delay_sec)
-                if len(history) > 100:
-                    history.pop(0)
+            # Update delay history from future records only
+            for r in future:
+                self._delay_history[r.route_id].append(r.delay_sec)
 
-            # Compute headways: sort arrivals per route, measure gaps
+            # Update headways from future records only
             route_arrivals: dict[str, list[ArrivalRecord]] = defaultdict(list)
-            for r in records:
+            for r in future:
                 route_arrivals[r.route_id].append(r)
             for route_id, rarrivals in route_arrivals.items():
                 sorted_arr = sorted(rarrivals, key=lambda x: x.arrival_time)
-                gaps: list[float] = []
+                gaps = []
                 for i in range(1, len(sorted_arr)):
-                    gap = (
-                        sorted_arr[i].arrival_time - sorted_arr[i - 1].arrival_time
-                    ).total_seconds()
-                    if 0 < gap < 1800:  # ignore gaps > 30 min (end of service)
+                    gap = (sorted_arr[i].arrival_time - sorted_arr[i-1].arrival_time).total_seconds()
+                    if 0 < gap < 1800:
                         gaps.append(gap)
                 if gaps:
-                    hw = self._headways[route_id]
-                    hw.extend(gaps)
-                    if len(hw) > 50:
-                        self._headways[route_id] = hw[-50:]
+                    self._headways[route_id].extend(gaps)
 
             # Reset alerts
             self._alerts.clear()
@@ -72,14 +67,12 @@ class LiveState:
         with self._lock:
             return self._compute_line_health()
 
-    def snapshot(self) -> dict:
+    def snapshot(self) -> dict[str, Any]:
         """Return full state as a serializable dict for WebSocket broadcast."""
-        now = datetime.now(timezone.utc)
         with self._lock:
             arrivals_out: dict[str, list[dict]] = {}
             for stop_id, records in self._arrivals.items():
-                upcoming = [r for r in records if r.arrival_time > now]
-                if upcoming:
+                if records:
                     arrivals_out[stop_id] = [
                         {
                             'route_id': r.route_id,
@@ -88,7 +81,7 @@ class LiveState:
                             'delay_sec': r.delay_sec,
                             'direction': r.direction,
                         }
-                        for r in sorted(upcoming, key=lambda x: x.arrival_time)[:3]
+                        for r in sorted(records, key=lambda x: x.arrival_time)[:3]
                     ]
 
             # Inline health computation — avoids re-acquiring the lock
@@ -118,7 +111,7 @@ class LiveState:
         all_routes = set(self._delay_history.keys()) | set(self._alerts.keys())
         result: list[LineHealth] = []
         for route_id in all_routes:
-            history = self._delay_history.get(route_id, [0])
+            history = self._delay_history.get(route_id, deque())
             avg_delay = mean(history) if history else 0.0
             hw = self._headways.get(route_id, [])
             hw_variance = variance(hw) if len(hw) >= 2 else 0.0

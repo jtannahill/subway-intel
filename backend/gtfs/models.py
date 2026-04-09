@@ -11,7 +11,7 @@ class LineStatus(str, Enum):
     DISRUPTED = 'DISRUPTED'
 
 
-@dataclass
+@dataclass(frozen=True)
 class ArrivalRecord:
     route_id: str
     trip_id: str

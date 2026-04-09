@@ -1,3 +1,4 @@
+import { useState, useEffect } from 'react'
 import type { LiveData } from '../hooks/useLiveData'
 
 type View = 'stations' | 'commute' | 'pulse' | 'intel'
@@ -16,6 +17,16 @@ const NAV_ITEMS: { id: View; label: string }[] = [
 ]
 
 export function Sidebar({ active, onNav, liveData }: Props) {
+  const [elapsedSec, setElapsedSec] = useState(0)
+
+  useEffect(() => {
+    if (!liveData.lastUpdate) return
+    const update = () => setElapsedSec(Math.round((Date.now() - liveData.lastUpdate!.getTime()) / 1000))
+    update()
+    const interval = setInterval(update, 1000)
+    return () => clearInterval(interval)
+  }, [liveData.lastUpdate])
+
   const alertCount = liveData.lineHealth.filter(h => h.alerts.length > 0).length
   const hasDelays = liveData.lineHealth.some(h => h.status === 'DELAYED' || h.status === 'DISRUPTED')
 
@@ -68,7 +79,7 @@ export function Sidebar({ active, onNav, liveData }: Props) {
         </div>
         {liveData.lastUpdate && (
           <div style={{ color: 'var(--text-faint)', fontSize: 9, marginTop: 8 }}>
-            updated {Math.round((Date.now() - liveData.lastUpdate.getTime()) / 1000)}s ago
+            updated {elapsedSec}s ago
           </div>
         )}
       </div>

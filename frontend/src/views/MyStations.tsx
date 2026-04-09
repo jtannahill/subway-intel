@@ -24,7 +24,7 @@ export function MyStations({ liveData, stationsCtx }: Props) {
   }
 
   function addStop(stop: { stop_id: string; name: string }) {
-    // Default: add both N and S directions
+    // Add N-direction by default
     addStation({ stop_id: stop.stop_id + 'N', name: stop.name, direction: 'N', route_ids: [] })
     setShowSearch(false)
     setSearchQ('')

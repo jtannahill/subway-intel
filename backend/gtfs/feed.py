@@ -65,7 +65,8 @@ def parse_alerts(data: bytes) -> list[ServiceAlert]:
     try:
         feed = gtfs_realtime_pb2.FeedMessage()
         feed.ParseFromString(data)
-    except Exception:
+    except Exception as e:
+        logger.warning('Failed to parse GTFS-RT alerts: %s', e)
         return []
 
     alerts: list[ServiceAlert] = []
@@ -79,6 +80,8 @@ def parse_alerts(data: bytes) -> list[ServiceAlert]:
         # rather than str(alert.effect) which yields the raw integer as a string (e.g. '6').
         effect = gtfs_realtime_pb2.Alert.Effect.Name(alert.effect)
         severity = 'HIGH' if 'SERVICE' in effect and 'NO' in effect else 'LOW'
+        if not routes and header:
+            routes = ['ALL']
         for route_id in routes:
             alerts.append(ServiceAlert(
                 route_id=route_id,

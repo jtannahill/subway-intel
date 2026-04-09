@@ -2,6 +2,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
+from typing import Literal
 
 
 class LineStatus(str, Enum):
@@ -17,7 +18,11 @@ class ArrivalRecord:
     stop_id: str
     arrival_time: datetime
     delay_sec: int
-    direction: str  # 'N' or 'S'
+    direction: Literal['N', 'S']
+
+    def __post_init__(self) -> None:
+        if self.arrival_time.tzinfo is None:
+            raise ValueError("arrival_time must be timezone-aware (UTC)")
 
     @property
     def delay_minutes(self) -> float:

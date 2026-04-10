@@ -18,6 +18,7 @@ from backend.gtfs.feed import (
     parse_alerts,
     parse_alerts_json,
     parse_feed,
+    parse_vehicle_positions,
 )
 from backend.gtfs.state import LiveState
 from backend.gtfs import static as gtfs_static
@@ -39,22 +40,24 @@ async def poll_loop() -> None:
             try:
                 all_records = []
                 all_alerts = []
+                all_vehicle_positions = []
                 for feed_id, url in MTA_FEED_URLS.items():
                     data = await fetch_feed(url, client)
                     all_records.extend(parse_feed(data))
                     all_alerts.extend(parse_alerts(data))
+                    all_vehicle_positions.extend(parse_vehicle_positions(data))
 
                 # Customer-facing alerts (JSON format — separate from GTFS-RT protobuf)
                 alerts_json_data = await fetch_feed(MTA_ALERTS_JSON_URL, client)
                 all_alerts.extend(parse_alerts_json(alerts_json_data))
 
-                _live_state.ingest(all_records, all_alerts)
+                _live_state.ingest(all_records, all_alerts, all_vehicle_positions)
                 snapshot = _live_state.snapshot()
                 await manager.broadcast(snapshot)
                 await write_arrivals(all_records)
                 await write_alerts(all_alerts)
-                logger.info('Poll complete: %d records, %d alerts, %d ws clients',
-                            len(all_records), len(all_alerts), manager.connection_count)
+                logger.info('Poll complete: %d records, %d alerts, %d vehicles, %d ws clients',
+                            len(all_records), len(all_alerts), len(all_vehicle_positions), manager.connection_count)
             except Exception as e:
                 logger.error('Poll loop error: %s', e)
             await asyncio.sleep(POLL_INTERVAL)

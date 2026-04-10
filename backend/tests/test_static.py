@@ -3,14 +3,15 @@ from unittest.mock import patch
 
 
 MOCK_STOPS = {
-    '127':  {'name': 'Times Sq-42 St', 'lat': 40.755983, 'lon': -73.986229},
-    '127N': {'name': 'Times Sq-42 St', 'lat': 40.755983, 'lon': -73.986229},
-    '127S': {'name': 'Times Sq-42 St', 'lat': 40.755983, 'lon': -73.986229},
-    '631':  {'name': 'Grand Central-42 St', 'lat': 40.751776, 'lon': -73.976848},
-    '631N': {'name': 'Grand Central-42 St', 'lat': 40.751776, 'lon': -73.976848},
-    '631S': {'name': 'Grand Central-42 St', 'lat': 40.751776, 'lon': -73.976848},
-    '901':  {'name': 'Canal St', 'lat': 40.718092, 'lon': -74.000494},
-    '901N': {'name': 'Canal St', 'lat': 40.718092, 'lon': -74.000494},
+    '127':  {'name': 'Times Sq-42 St', 'lat': 40.755983, 'lon': -73.986229, 'parent_station': ''},
+    '127N': {'name': 'Times Sq-42 St', 'lat': 40.755983, 'lon': -73.986229, 'parent_station': '127'},
+    '127S': {'name': 'Times Sq-42 St', 'lat': 40.755983, 'lon': -73.986229, 'parent_station': '127'},
+    '631':  {'name': 'Grand Central-42 St', 'lat': 40.751776, 'lon': -73.976848, 'parent_station': ''},
+    '631N': {'name': 'Grand Central-42 St', 'lat': 40.751776, 'lon': -73.976848, 'parent_station': '631'},
+    '631S': {'name': 'Grand Central-42 St', 'lat': 40.751776, 'lon': -73.976848, 'parent_station': '631'},
+    '901':  {'name': 'Canal St', 'lat': 40.718092, 'lon': -74.000494, 'parent_station': ''},
+    '901N': {'name': 'Canal St', 'lat': 40.718092, 'lon': -74.000494, 'parent_station': '901'},
+    'GS':   {'name': 'Grand Central Shuttle', 'lat': 40.751999, 'lon': -73.976006, 'parent_station': ''},
 }
 
 
@@ -65,3 +66,11 @@ def test_nearest_stops_includes_distance_mi():
         results = nearest_stops(lat=40.756, lon=-73.986, limit=1)
         assert 'distance_mi' in results[0]
         assert isinstance(results[0]['distance_mi'], float)
+
+
+def test_nearest_stops_includes_non_directional_s_suffix():
+    with patch('backend.gtfs.static._stops', MOCK_STOPS):
+        from backend.gtfs.static import nearest_stops
+        results = nearest_stops(lat=40.752, lon=-73.976, limit=5)
+        stop_ids = [r['stop_id'] for r in results]
+        assert 'GS' in stop_ids  # ends in S but is a parent station, not directional

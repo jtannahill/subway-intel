@@ -53,6 +53,7 @@ def _parse_stops(zf: zipfile.ZipFile) -> None:
                 'name': row['stop_name'],
                 'lat': float(row.get('stop_lat') or 0),
                 'lon': float(row.get('stop_lon') or 0),
+                'parent_station': row.get('parent_station', '').strip(),
             }
 
 
@@ -112,9 +113,9 @@ def search_stops(query: str, limit: int = 10) -> list[dict]:
         if name not in by_name:
             by_name[name] = (sid, info)
         else:
-            existing_sid, _ = by_name[name]
-            # Upgrade to parent stop if current best is directional
-            if existing_sid.endswith(('N', 'S')) and not sid.endswith(('N', 'S')):
+            existing_sid, existing_info = by_name[name]
+            # Prefer parent stop (empty parent_station) over directional child
+            if existing_info.get('parent_station') and not info.get('parent_station'):
                 by_name[name] = (sid, info)
     results = [
         {'stop_id': sid, 'name': info['name'], 'lat': info['lat'], 'lon': info['lon']}
@@ -145,7 +146,7 @@ def nearest_stops(lat: float, lon: float, limit: int = 1) -> list[dict]:
             '_dist': dist_mi(info),
         }
         for sid, info in _stops.items()
-        if info['lat'] != 0 and not sid.endswith(('N', 'S'))
+        if info['lat'] != 0 and not info.get('parent_station')
     ]
     candidates.sort(key=lambda x: x['_dist'])
     return [

@@ -104,6 +104,8 @@ def search_stops(query: str, limit: int = 10) -> list[dict]:
     Returns: [{stop_id, name, lat, lon}]
     """
     q = query.lower()
+    if not q:
+        return []
     # name -> (stop_id, info): accumulate best stop_id per name
     by_name: dict[str, tuple[str, dict]] = {}
     for sid, info in _stops.items():
@@ -121,12 +123,13 @@ def search_stops(query: str, limit: int = 10) -> list[dict]:
         {'stop_id': sid, 'name': info['name'], 'lat': info['lat'], 'lon': info['lon']}
         for sid, info in by_name.values()
     ]
+    results.sort(key=lambda r: r['name'])
     return results[:limit]
 
 
 def nearest_stops(lat: float, lon: float, limit: int = 1) -> list[dict]:
     """Return the closest stops to (lat, lon) by approximate distance in miles.
-    Only considers parent stops (no N/S suffix) to avoid duplicate station names.
+    Only considers parent stops (empty parent_station) to avoid duplicate station names.
     Returns: [{stop_id, name, lat, lon, distance_mi}]
     """
     LAT_MI = 69.0    # miles per degree latitude
@@ -146,7 +149,7 @@ def nearest_stops(lat: float, lon: float, limit: int = 1) -> list[dict]:
             '_dist': dist_mi(info),
         }
         for sid, info in _stops.items()
-        if info['lat'] != 0 and not info.get('parent_station')
+        if info['lat'] != 0 and info['lon'] != 0 and not info.get('parent_station')
     ]
     candidates.sort(key=lambda x: x['_dist'])
     return [

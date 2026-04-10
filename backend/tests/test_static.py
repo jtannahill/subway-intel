@@ -15,6 +15,20 @@ MOCK_STOPS = {
 }
 
 
+def test_search_stops_empty_query_returns_empty():
+    with patch('backend.gtfs.static._stops', MOCK_STOPS):
+        from backend.gtfs.static import search_stops
+        results = search_stops('')
+        assert results == []
+
+
+def test_search_stops_no_match_returns_empty():
+    with patch('backend.gtfs.static._stops', MOCK_STOPS):
+        from backend.gtfs.static import search_stops
+        results = search_stops('zzznomatch')
+        assert results == []
+
+
 def test_search_stops_deduplicates_by_name():
     with patch('backend.gtfs.static._stops', MOCK_STOPS):
         from backend.gtfs.static import search_stops
@@ -58,6 +72,8 @@ def test_nearest_stops_excludes_directional_stops():
         stop_ids = [r['stop_id'] for r in results]
         assert '127N' not in stop_ids
         assert '127S' not in stop_ids
+        # 4 parent stops in mock: 127, 631, 901, GS
+        assert len(results) == 4
 
 
 def test_nearest_stops_includes_distance_mi():

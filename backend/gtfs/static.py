@@ -19,11 +19,13 @@ GTFS_STATIC_URL = 'http://web.mta.info/developers/data/nyct/subway/google_transi
 _stops: dict[str, dict] = {}
 # (origin_stop_id, dest_stop_id) -> travel_sec  (naive: same trip lookup)
 _travel_times: dict[tuple[str, str], int] = {}
+# (route_id, direction_id) -> ordered [{stop_id, name}] from canonical trip
+_route_stops: dict[tuple[str, int], list[dict]] = {}
 
 
 def load(data_dir: Optional[Path] = None) -> None:
     """Download and parse static GTFS. Call once at startup."""
-    global _stops, _travel_times
+    global _stops, _travel_times, _route_stops
     try:
         if data_dir and (data_dir / 'google_transit.zip').exists():
             raw = (data_dir / 'google_transit.zip').read_bytes()
@@ -39,7 +41,9 @@ def load(data_dir: Optional[Path] = None) -> None:
         with zipfile.ZipFile(io.BytesIO(raw)) as zf:
             _parse_stops(zf)
             _parse_stop_times(zf)
-        logger.info('Static GTFS loaded: %d stops, %d travel pairs', len(_stops), len(_travel_times))
+            _parse_route_stops(zf)
+        logger.info('Static GTFS loaded: %d stops, %d travel pairs, %d route-direction sequences',
+                    len(_stops), len(_travel_times), len(_route_stops))
     except Exception as e:
         logger.error('Static GTFS load failed: %s', e)
 
@@ -82,12 +86,65 @@ def _parse_stop_times(zf: zipfile.ZipFile) -> None:
                     _travel_times[key] = travel
 
 
+def _parse_route_stops(zf: zipfile.ZipFile) -> None:
+    """Build canonical stop sequence per (route_id, direction_id).
+    Uses the trip with the longest stop count as the canonical trip."""
+    global _route_stops
+
+    # Read trips.txt: trip_id -> (route_id, direction_id)
+    trip_meta: dict[str, tuple[str, int]] = {}
+    with zf.open('trips.txt') as f:
+        reader = csv.DictReader(io.TextIOWrapper(f))
+        for row in reader:
+            route_id = row.get('route_id', '').strip()
+            trip_id = row.get('trip_id', '').strip()
+            direction_id = int(row.get('direction_id', '0') or '0')
+            if route_id and trip_id:
+                trip_meta[trip_id] = (route_id, direction_id)
+
+    # Read stop_times.txt: group by trip_id, ordered by stop_sequence
+    trip_stop_seqs: dict[str, list[tuple[int, str]]] = {}
+    with zf.open('stop_times.txt') as f:
+        reader = csv.DictReader(io.TextIOWrapper(f))
+        for row in reader:
+            trip_id = row.get('trip_id', '').strip()
+            stop_id = row.get('stop_id', '').strip()
+            seq = int(row.get('stop_sequence', '0') or '0')
+            if trip_id and stop_id:
+                if trip_id not in trip_stop_seqs:
+                    trip_stop_seqs[trip_id] = []
+                trip_stop_seqs[trip_id].append((seq, stop_id))
+
+    # For each (route_id, direction_id), pick the trip with most stops
+    best: dict[tuple[str, int], list[tuple[int, str]]] = {}
+    for trip_id, (route_id, direction_id) in trip_meta.items():
+        stops = trip_stop_seqs.get(trip_id, [])
+        key = (route_id, direction_id)
+        if key not in best or len(stops) > len(best[key]):
+            best[key] = stops
+
+    # Sort by stop_sequence, map stop_id -> name
+    _route_stops.clear()
+    for (route_id, direction_id), stops in best.items():
+        stops.sort(key=lambda x: x[0])
+        _route_stops[(route_id, direction_id)] = [
+            {'stop_id': sid, 'name': _stops.get(sid, {}).get('name', sid)}
+            for _, sid in stops
+        ]
+
+
 def _parse_hhmmss(s: str) -> int:
     parts = s.strip().split(':')
     if len(parts) != 3:
         return 0
     h, m, sec = int(parts[0]), int(parts[1]), int(parts[2])
     return h * 3600 + m * 60 + sec
+
+
+def get_route_stops(route_id: str, direction_id: int) -> list[dict]:
+    """Return canonical ordered stop list for a route+direction.
+    Each entry: {stop_id: str, name: str}. Empty list if not found."""
+    return _route_stops.get((route_id, direction_id), [])
 
 
 def get_stop_name(stop_id: str) -> str:

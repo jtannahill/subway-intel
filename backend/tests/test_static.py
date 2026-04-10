@@ -90,3 +90,26 @@ def test_nearest_stops_includes_non_directional_s_suffix():
         results = nearest_stops(lat=40.752, lon=-73.976, limit=5)
         stop_ids = [r['stop_id'] for r in results]
         assert 'GS' in stop_ids  # ends in S but is a parent station, not directional
+
+
+def test_get_route_stops_returns_ordered_list():
+    """get_route_stops returns stops in stop_sequence order."""
+    mock_route_stops = {
+        ('6', 1): [
+            {'stop_id': '640', 'name': 'Pelham Bay Park'},
+            {'stop_id': '639', 'name': 'Buhre Av'},
+            {'stop_id': '631', 'name': 'Grand Central-42 St'},
+        ]
+    }
+    with patch('backend.gtfs.static._route_stops', mock_route_stops):
+        from backend.gtfs.static import get_route_stops
+        stops = get_route_stops('6', 1)
+        assert len(stops) == 3
+        assert stops[0]['stop_id'] == '640'
+        assert stops[2]['stop_id'] == '631'
+
+
+def test_get_route_stops_returns_empty_for_unknown_route():
+    with patch('backend.gtfs.static._route_stops', {}):
+        from backend.gtfs.static import get_route_stops
+        assert get_route_stops('Z99', 0) == []

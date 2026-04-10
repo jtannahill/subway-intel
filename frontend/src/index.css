@@ -6,9 +6,9 @@
   --bg-elevated: #1a1a1a;
   --border: #1e1e1e;
   --border-dim: #161616;
-  --text-primary: #e2e8f0;
-  --text-muted: #555555;
-  --text-faint: #333333;
+  --text-primary: #f0f4f8;
+  --text-muted: #8a9bb0;
+  --text-faint: #5a6a7a;
   --green: #22c55e;
   --green-dim: #0d1a0d;
   --green-border: #1a3a1a;
@@ -18,7 +18,6 @@
   --red: #ef4444;
   --red-dim: #1a0a0a;
   --red-border: #3d1a1a;
-  --sidebar-width: 180px;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -27,7 +26,7 @@ body {
   background: var(--bg);
   color: var(--text-primary);
   font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
-  font-size: 13px;
+  font-size: 15px;
   -webkit-font-smoothing: antialiased;
   height: 100vh;
   overflow: hidden;
@@ -41,10 +40,10 @@ body {
 ::-webkit-scrollbar-thumb { background: #222; border-radius: 2px; }
 
 /* Typography helpers */
-.label { font-size: 9px; letter-spacing: 0.12em; color: var(--text-faint); text-transform: uppercase; }
-.label-green { font-size: 9px; letter-spacing: 0.12em; color: var(--green); text-transform: uppercase; }
-.mono-lg { font-size: 20px; font-weight: 700; font-family: inherit; }
-.mono-sm { font-size: 10px; color: var(--text-muted); }
+.label { font-size: 11px; letter-spacing: 0.10em; color: var(--text-faint); text-transform: uppercase; }
+.label-green { font-size: 11px; letter-spacing: 0.10em; color: var(--green); text-transform: uppercase; }
+.mono-lg { font-size: 22px; font-weight: 700; font-family: inherit; }
+.mono-sm { font-size: 12px; color: var(--text-muted); }
 
 /* Card */
 .card {
@@ -62,3 +61,24 @@ body {
 .dot-amber { background: var(--amber); }
 .dot-red { background: var(--red); }
 .dot-dim { background: #333; }
+
+/* Live update pulse */
+@keyframes pulse-glow {
+  0%   { box-shadow: 0 0 0 0 #22c55e44; border-color: var(--green); }
+  50%  { box-shadow: 0 0 12px 4px #22c55e44; border-color: var(--green); }
+  100% { box-shadow: 0 0 0 0 #22c55e00; border-color: var(--green-border); }
+}
+.pulse { animation: pulse-glow 1.2s ease-out forwards; }
+
+@keyframes pulse-glow-amber {
+  0%   { box-shadow: 0 0 0 0 #f59e0b44; border-color: var(--amber); }
+  50%  { box-shadow: 0 0 12px 4px #f59e0b44; border-color: var(--amber); }
+  100% { box-shadow: 0 0 0 0 #f59e0b00; border-color: var(--amber-border); }
+}
+.pulse-amber { animation: pulse-glow-amber 1.2s ease-out forwards; }
+
+/* Ticker scroll */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}

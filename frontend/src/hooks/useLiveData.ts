@@ -16,9 +16,17 @@ export interface LineHealthEntry {
   alerts: string[]
 }
 
+export interface VehiclePositionEntry {
+  trip_id: string
+  route_id: string
+  stop_id: string
+  status: 'STOPPED_AT' | 'IN_TRANSIT_TO' | 'INCOMING_AT'
+}
+
 export interface LiveData {
   arrivals: Record<string, ArrivalEntry[]>  // stop_id → arrivals
   lineHealth: LineHealthEntry[]
+  vehiclePositions: VehiclePositionEntry[]
   connected: boolean
   lastUpdate: Date | null
 }
@@ -26,6 +34,7 @@ export interface LiveData {
 const INITIAL: LiveData = {
   arrivals: {},
   lineHealth: [],
+  vehiclePositions: [],
   connected: false,
   lastUpdate: null,
 }
@@ -34,11 +43,17 @@ export function useLiveData(): LiveData {
   const [data, setData] = useState<LiveData>(INITIAL)
 
   const onMessage = useCallback((msg: unknown) => {
-    const m = msg as { type: string; arrivals?: Record<string, ArrivalEntry[]>; line_health?: LineHealthEntry[] }
+    const m = msg as {
+      type: string
+      arrivals?: Record<string, ArrivalEntry[]>
+      line_health?: LineHealthEntry[]
+      vehicle_positions?: VehiclePositionEntry[]
+    }
     if (m.type === 'snapshot') {
       setData({
         arrivals: m.arrivals ?? {},
         lineHealth: m.line_health ?? [],
+        vehiclePositions: m.vehicle_positions ?? [],
         connected: true,
         lastUpdate: new Date(),
       })

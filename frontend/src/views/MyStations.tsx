@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { ArrivalCard } from '../components/ArrivalCard'
 import { SignalStrip } from '../components/SignalStrip'
 import { SmartCommute } from './SmartCommute'
+import { StationSearchInput } from '../components/StationSearchInput'
 import type { LiveData } from '../hooks/useLiveData'
 import type { SavedStation } from '../hooks/useStations'
 
@@ -12,27 +13,14 @@ interface Props {
 
 export function MyStations({ liveData, stationsCtx }: Props) {
   const { stations, addStation, removeStation } = stationsCtx
-  const [searchQ, setSearchQ] = useState('')
-  const [searchResults, setSearchResults] = useState<{ stop_id: string; name: string }[]>([])
   const [showSearch, setShowSearch] = useState(false)
 
-  async function handleSearch(q: string) {
-    setSearchQ(q)
-    if (q.length < 2) { setSearchResults([]); return }
-    const res = await fetch(`/api/stops/search?q=${encodeURIComponent(q)}&limit=8`)
-    const data = await res.json()
-    setSearchResults(data.results ?? [])
-  }
-
-  function addStop(stop: { stop_id: string; name: string }) {
-    addStation({ stop_id: stop.stop_id + 'N', name: stop.name, direction: 'N', route_ids: [] })
+  function addStop(stop_id: string, name: string) {
+    addStation({ stop_id: stop_id + 'N', name, direction: 'N', route_ids: [] })
     setShowSearch(false)
-    setSearchQ('')
-    setSearchResults([])
   }
 
   return (
-    // Span both grid columns, then create inner 2-col layout
     <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
 
       {/* LEFT: Station list */}
@@ -51,28 +39,10 @@ export function MyStations({ liveData, stationsCtx }: Props) {
 
         {showSearch && (
           <div style={{ marginBottom: 16 }}>
-            <input
-              autoFocus
-              value={searchQ}
-              onChange={e => handleSearch(e.target.value)}
-              placeholder="Search stations..."
-              style={{
-                all: 'unset', display: 'block', width: '100%',
-                background: 'var(--bg-surface)', border: '1px solid var(--green-border)',
-                borderRadius: 3, padding: '8px 12px',
-                color: 'var(--text-primary)', fontSize: 12, marginBottom: 4,
-              }}
+            <StationSearchInput
+              placeholder="Search station or NYC address..."
+              onSelect={(stop_id, name) => addStop(stop_id, name)}
             />
-            {searchResults.map(r => (
-              <button key={r.stop_id} onClick={() => addStop(r)} style={{
-                all: 'unset', display: 'block', width: '100%',
-                padding: '8px 12px', cursor: 'pointer',
-                color: 'var(--text-primary)', fontSize: 11,
-                background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)',
-              }}>
-                {r.name} <span style={{ color: 'var(--text-faint)' }}>{r.stop_id}</span>
-              </button>
-            ))}
           </div>
         )}
 

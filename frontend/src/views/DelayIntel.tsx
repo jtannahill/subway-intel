@@ -31,7 +31,7 @@ export function DelayIntel({ liveData }: Props) {
   )
 
   return (
-    <div>
+    <div style={{ gridColumn: '1 / -1' }}>
       <div style={{ marginBottom: 8 }}>
         <span className="label" style={{ fontSize: 14, color: 'var(--text-primary)' }}>DELAY INTEL</span>
       </div>

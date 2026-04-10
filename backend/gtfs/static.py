@@ -2,6 +2,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import math
 import zipfile
 from pathlib import Path
 from typing import Optional
@@ -97,10 +98,63 @@ def get_travel_sec(origin_stop_id: str, dest_stop_id: str) -> Optional[int]:
 
 
 def search_stops(query: str, limit: int = 10) -> list[dict]:
+    """Search stops by name, deduplicated — one result per station name.
+    Prefers the parent stop_id (no N/S suffix) over directional variants.
+    Returns: [{stop_id, name, lat, lon}]
+    """
     q = query.lower()
+    # name -> (stop_id, info): accumulate best stop_id per name
+    by_name: dict[str, tuple[str, dict]] = {}
+    for sid, info in _stops.items():
+        name = info['name']
+        if q not in name.lower():
+            continue
+        if name not in by_name:
+            by_name[name] = (sid, info)
+        else:
+            existing_sid, _ = by_name[name]
+            # Upgrade to parent stop if current best is directional
+            if existing_sid.endswith(('N', 'S')) and not sid.endswith(('N', 'S')):
+                by_name[name] = (sid, info)
     results = [
-        {'stop_id': sid, 'name': info['name']}
-        for sid, info in _stops.items()
-        if q in info['name'].lower()
+        {'stop_id': sid, 'name': info['name'], 'lat': info['lat'], 'lon': info['lon']}
+        for sid, info in by_name.values()
     ]
     return results[:limit]
+
+
+def nearest_stops(lat: float, lon: float, limit: int = 1) -> list[dict]:
+    """Return the closest stops to (lat, lon) by approximate distance in miles.
+    Only considers parent stops (no N/S suffix) to avoid duplicate station names.
+    Returns: [{stop_id, name, lat, lon, distance_mi}]
+    """
+    LAT_MI = 69.0    # miles per degree latitude
+    LON_MI = 52.5    # miles per degree longitude at NYC (~40.7° N)
+
+    def dist_mi(info: dict) -> float:
+        dlat = (info['lat'] - lat) * LAT_MI
+        dlon = (info['lon'] - lon) * LON_MI
+        return math.sqrt(dlat ** 2 + dlon ** 2)
+
+    candidates = [
+        {
+            'stop_id': sid,
+            'name': info['name'],
+            'lat': info['lat'],
+            'lon': info['lon'],
+            '_dist': dist_mi(info),
+        }
+        for sid, info in _stops.items()
+        if info['lat'] != 0 and not sid.endswith(('N', 'S'))
+    ]
+    candidates.sort(key=lambda x: x['_dist'])
+    return [
+        {
+            'stop_id': c['stop_id'],
+            'name': c['name'],
+            'lat': c['lat'],
+            'lon': c['lon'],
+            'distance_mi': round(c['_dist'], 2),
+        }
+        for c in candidates[:limit]
+    ]

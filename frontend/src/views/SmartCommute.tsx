@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { StationSearchInput } from '../components/StationSearchInput'
 import type { LiveData } from '../hooks/useLiveData'
 import type { SavedStation } from '../hooks/useStations'
 
@@ -27,20 +28,8 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  const [originResults, setOriginResults] = useState<{ stop_id: string; name: string }[]>([])
-  const [destResults, setDestResults] = useState<{ stop_id: string; name: string }[]>([])
-  const [originName, setOriginName] = useState('')
-  const [destName, setDestName] = useState('')
-
   void liveData
   void stationsCtx
-
-  async function searchStops(q: string, setter: typeof setOriginResults) {
-    if (q.length < 2) { setter([]); return }
-    const res = await fetch(`/api/stops/search?q=${encodeURIComponent(q)}&limit=6`)
-    const data = await res.json()
-    setter(data.results ?? [])
-  }
 
   async function calculate() {
     if (!origin || !dest) { setError('Select both origin and destination.'); return }
@@ -56,44 +45,22 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
 
   return (
     <div>
-      <div style={{ marginBottom: 20 }}>
-        <span className="label" style={{ fontSize: 14, color: 'var(--text-primary)' }}>SMART COMMUTE</span>
-      </div>
-
       {/* Origin */}
       <div style={{ marginBottom: 12 }}>
         <div className="label" style={{ marginBottom: 6 }}>FROM</div>
-        <input value={originName} onChange={e => { setOriginName(e.target.value); searchStops(e.target.value, setOriginResults) }}
-          placeholder="Search origin station..."
-          style={{ all: 'unset', display: 'block', width: '100%', background: 'var(--bg-surface)',
-            border: '1px solid var(--border)', borderRadius: 3, padding: '8px 12px',
-            color: 'var(--text-primary)', fontSize: 14 }} />
-        {originResults.map(r => (
-          <button key={r.stop_id} onClick={() => { setOrigin(r.stop_id + 'N'); setOriginName(r.name); setOriginResults([]) }}
-            style={{ all: 'unset', display: 'block', width: '100%', padding: '8px 12px', cursor: 'pointer',
-              color: 'var(--text-primary)', fontSize: 13, background: 'var(--bg-elevated)',
-              borderBottom: '1px solid var(--border)' }}>
-            {r.name}
-          </button>
-        ))}
+        <StationSearchInput
+          placeholder="Search origin station or address..."
+          onSelect={(stop_id) => setOrigin(stop_id + 'N')}
+        />
       </div>
 
       {/* Destination */}
       <div style={{ marginBottom: 16 }}>
         <div className="label" style={{ marginBottom: 6 }}>TO</div>
-        <input value={destName} onChange={e => { setDestName(e.target.value); searchStops(e.target.value, setDestResults) }}
-          placeholder="Search destination station..."
-          style={{ all: 'unset', display: 'block', width: '100%', background: 'var(--bg-surface)',
-            border: '1px solid var(--border)', borderRadius: 3, padding: '8px 12px',
-            color: 'var(--text-primary)', fontSize: 14 }} />
-        {destResults.map(r => (
-          <button key={r.stop_id} onClick={() => { setDest(r.stop_id + 'N'); setDestName(r.name); setDestResults([]) }}
-            style={{ all: 'unset', display: 'block', width: '100%', padding: '8px 12px', cursor: 'pointer',
-              color: 'var(--text-primary)', fontSize: 13, background: 'var(--bg-elevated)',
-              borderBottom: '1px solid var(--border)' }}>
-            {r.name}
-          </button>
-        ))}
+        <StationSearchInput
+          placeholder="Search destination station or address..."
+          onSelect={(stop_id) => setDest(stop_id + 'N')}
+        />
       </div>
 
       <button onClick={calculate} disabled={loading} style={{
@@ -115,13 +82,12 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
             const isNow = leaveInMin === 0
             const isFirst = i === 0
             return (
-              <div key={opt.trip_id} className={`card ${isFirst ? '' : ''}`} style={{
+              <div key={opt.trip_id} className="card" style={{
                 marginBottom: 8,
                 borderColor: isFirst ? (isNow ? 'var(--amber-border)' : 'var(--green-border)') : 'var(--border)',
                 opacity: isFirst ? 1 : 0.7,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                  {/* Leave in */}
                   <div style={{ minWidth: 80, textAlign: 'center' }}>
                     {isNow ? (
                       <div style={{ color: 'var(--amber)', fontSize: 13, fontWeight: 700, letterSpacing: '0.08em' }}>
@@ -136,11 +102,7 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
                       </>
                     )}
                   </div>
-
-                  {/* Divider */}
                   <div style={{ width: 1, height: 40, background: 'var(--border)' }} />
-
-                  {/* Details */}
                   <div style={{ flex: 1 }}>
                     <div style={{ color: 'var(--text-primary)', fontSize: 14, marginBottom: 4 }}>
                       <span style={{ fontWeight: 700 }}>{opt.route_id}</span>

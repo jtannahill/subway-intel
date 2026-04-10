@@ -39,6 +39,15 @@ class ServiceAlert:
 
 
 @dataclass
+class VehiclePosition:
+    trip_id: str
+    route_id: str
+    stop_id: str
+    current_status: str   # 'STOPPED_AT' | 'IN_TRANSIT_TO' | 'INCOMING_AT'
+    timestamp: datetime
+
+
+@dataclass
 class LineHealth:
     route_id: str
     status: LineStatus

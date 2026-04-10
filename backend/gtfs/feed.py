@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 import httpx
 from google.transit import gtfs_realtime_pb2
 
-from backend.gtfs.models import ArrivalRecord, ServiceAlert
+from backend.gtfs.models import ArrivalRecord, ServiceAlert, VehiclePosition
 
 logger = logging.getLogger(__name__)
 
@@ -166,6 +166,38 @@ def parse_alerts_json(data: bytes) -> list[ServiceAlert]:
                 header=header,
             ))
     return alerts
+
+
+def parse_vehicle_positions(data: bytes) -> list[VehiclePosition]:
+    """Parse GTFS-RT VehiclePosition entities. Returns empty list on failure."""
+    if not data:
+        return []
+    try:
+        feed = gtfs_realtime_pb2.FeedMessage()
+        feed.ParseFromString(data)
+    except Exception as e:
+        logger.warning('Failed to parse GTFS-RT vehicle positions: %s', e)
+        return []
+
+    positions: list[VehiclePosition] = []
+    for entity in feed.entity:
+        if not entity.HasField('vehicle'):
+            continue
+        v = entity.vehicle
+        stop_id = v.stop_id
+        route_id = v.trip.route_id
+        if not stop_id or not route_id:
+            continue
+        status = gtfs_realtime_pb2.VehiclePosition.VehicleStopStatus.Name(v.current_status)
+        ts = datetime.fromtimestamp(v.timestamp, tz=timezone.utc) if v.timestamp else datetime.now(timezone.utc)
+        positions.append(VehiclePosition(
+            trip_id=v.trip.trip_id,
+            route_id=route_id,
+            stop_id=stop_id,
+            current_status=status,
+            timestamp=ts,
+        ))
+    return positions
 
 
 async def fetch_feed(url: str, client: httpx.AsyncClient) -> bytes:

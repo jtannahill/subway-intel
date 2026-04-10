@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react'
 import type { ArrivalEntry } from '../hooks/useLiveData'
 import type { SavedStation } from '../hooks/useStations'
 import { LineBadge } from './LineBadge'
@@ -8,16 +9,28 @@ interface Props {
   station: SavedStation
   arrivals: ArrivalEntry[]
   onRemove: () => void
+  lastUpdate?: Date | null
 }
 
 function minutesUntil(isoTime: string): number {
   return Math.max(0, Math.round((new Date(isoTime).getTime() - Date.now()) / 60000))
 }
 
-export function ArrivalCard({ station, arrivals, onRemove }: Props) {
+export function ArrivalCard({ station, arrivals, onRemove, lastUpdate }: Props) {
+  const tilesRef = useRef<(HTMLDivElement | null)[]>([])
   const firstDelay = arrivals[0]?.delay_sec ?? 0
   const hasDelay = firstDelay > 30
   const isDisrupted = firstDelay > 300
+
+  useEffect(() => {
+    if (!lastUpdate) return
+    tilesRef.current.forEach(el => {
+      if (!el) return
+      el.classList.remove('pulse', 'pulse-amber')
+      void el.offsetWidth // reflow
+      el.classList.add(hasDelay ? 'pulse-amber' : 'pulse')
+    })
+  }, [lastUpdate, hasDelay])
 
   return (
     <div className={`card ${hasDelay ? (isDisrupted ? 'card-disrupted' : 'card-delayed') : ''}`}
@@ -49,14 +62,18 @@ export function ArrivalCard({ station, arrivals, onRemove }: Props) {
             const mins = minutesUntil(a.arrival_time)
             const isNext = i === 0
             return (
-              <div key={a.arrival_time} style={{
-                background: isNext ? (hasDelay ? 'var(--amber-dim)' : 'var(--green-dim)') : 'var(--bg)',
-                border: `1px solid ${isNext ? (hasDelay ? 'var(--amber-border)' : 'var(--green-border)') : 'var(--border)'}`,
-                borderRadius: 3,
-                padding: '8px 14px',
-                textAlign: 'center',
-                minWidth: 52,
-              }}>
+              <div
+                key={a.arrival_time}
+                ref={el => { tilesRef.current[i] = el }}
+                style={{
+                  background: isNext ? (hasDelay ? 'var(--amber-dim)' : 'var(--green-dim)') : 'var(--bg)',
+                  border: `1px solid ${isNext ? (hasDelay ? 'var(--amber-border)' : 'var(--green-border)') : 'var(--border)'}`,
+                  borderRadius: 3,
+                  padding: '8px 14px',
+                  textAlign: 'center',
+                  minWidth: 52,
+                }}
+              >
                 <div className="mono-lg" style={{
                   color: isNext ? (hasDelay ? 'var(--amber)' : 'var(--green)') : 'var(--text-muted)',
                 }}>

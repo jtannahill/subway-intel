@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import type { LiveData, LineHealthEntry } from '../hooks/useLiveData'
 import { LineBadge } from '../components/LineBadge'
+import { TrackDiagram } from '../components/TrackDiagram'
 
 interface Props { liveData: LiveData }
 
@@ -139,20 +140,31 @@ export function NetworkPulse({ liveData }: Props) {
                 <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>{isExpanded ? '▲' : '▼'}</span>
               </button>
 
-              {isExpanded && h && (
+              {isExpanded && (
                 <div style={{
                   background: 'var(--bg)', border: '1px solid var(--border)', borderTop: 'none',
                   borderRadius: '0 0 3px 3px', padding: 12,
                 }}>
-                  {h.alerts.length === 0
-                    ? <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>No active alerts.</div>
-                    : h.alerts.map((a, i) => (
-                        <div key={i} style={{ color: 'var(--amber)', fontSize: 11, marginBottom: 4 }}>⚠ {a}</div>
-                      ))
-                  }
-                  <div style={{ color: 'var(--text-faint)', fontSize: 10, marginTop: 8 }}>
-                    Avg delay: {Math.round(h.avg_delay_sec)}s · HW variance: {Math.round(h.headway_variance)}s
-                  </div>
+                  {h ? (
+                    <>
+                      {h.alerts.length === 0
+                        ? <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>No active alerts.</div>
+                        : h.alerts.map((a, i) => (
+                            <div key={i} style={{ color: 'var(--amber)', fontSize: 11, marginBottom: 4 }}>⚠ {a}</div>
+                          ))
+                      }
+                      <div style={{ color: 'var(--text-faint)', fontSize: 10, marginTop: 8 }}>
+                        Avg delay: {Math.round(h.avg_delay_sec)}s · HW variance: {Math.round(h.headway_variance)}s
+                      </div>
+                    </>
+                  ) : (
+                    <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>No data.</div>
+                  )}
+                  <TrackDiagram
+                    routeId={routes[0]}
+                    vehiclePositions={liveData.vehiclePositions}
+                    lineHealth={liveData.lineHealth}
+                  />
                 </div>
               )}
             </div>

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from statistics import mean, variance
 from typing import Any
 
-from backend.gtfs.models import ArrivalRecord, LineHealth, LineStatus, ServiceAlert
+from backend.gtfs.models import ArrivalRecord, LineHealth, LineStatus, ServiceAlert, VehiclePosition
 
 
 class LiveState:
@@ -21,8 +21,15 @@ class LiveState:
         self._headways: dict[str, deque] = defaultdict(lambda: deque(maxlen=50))
         # route_id → list of active alert headers
         self._alerts: dict[str, list[str]] = defaultdict(list)
+        # trip_id → VehiclePosition (last position per trip)
+        self._vehicle_positions: dict[str, VehiclePosition] = {}
 
-    def ingest(self, records: list[ArrivalRecord], alerts: list[ServiceAlert]) -> None:
+    def ingest(
+        self,
+        records: list[ArrivalRecord],
+        alerts: list[ServiceAlert],
+        vehicle_positions: list[VehiclePosition] | None = None,
+    ) -> None:
         now = datetime.now(timezone.utc)
         with self._lock:
             # Only keep future arrivals
@@ -55,6 +62,11 @@ class LiveState:
             self._alerts.clear()
             for alert in alerts:
                 self._alerts[alert.route_id].append(alert.header)
+
+            # Reset and store vehicle positions (last write per trip_id wins)
+            self._vehicle_positions.clear()
+            for vp in (vehicle_positions or []):
+                self._vehicle_positions[vp.trip_id] = vp
 
     def get_arrivals(self, stop_id: str, limit: int = 3) -> list[ArrivalRecord]:
         with self._lock:
@@ -99,6 +111,15 @@ class LiveState:
                         'alerts': h.alerts,
                     }
                     for h in health
+                ],
+                'vehicle_positions': [
+                    {
+                        'trip_id': vp.trip_id,
+                        'route_id': vp.route_id,
+                        'stop_id': vp.stop_id,
+                        'status': vp.current_status,
+                    }
+                    for vp in self._vehicle_positions.values()
                 ],
             }
 

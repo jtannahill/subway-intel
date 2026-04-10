@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from backend.gtfs.models import ArrivalRecord, ServiceAlert, LineStatus
+from backend.gtfs.models import ArrivalRecord, ServiceAlert, LineStatus, VehiclePosition
 from backend.gtfs.state import LiveState
 
 
@@ -53,3 +53,37 @@ def test_ingest_prunes_past_arrivals():
     state.ingest([past], alerts=[])
     arrivals = state.get_arrivals('631N')
     assert len(arrivals) == 0
+
+
+def test_ingest_stores_vehicle_positions():
+    state = LiveState()
+    vp = VehiclePosition(
+        trip_id='trip-v1', route_id='6', stop_id='631N',
+        current_status='STOPPED_AT',
+        timestamp=datetime(2026, 4, 10, 12, 0, tzinfo=timezone.utc),
+    )
+    state.ingest([], [], [vp])
+    snap = state.snapshot()
+    assert len(snap['vehicle_positions']) == 1
+    assert snap['vehicle_positions'][0]['route_id'] == '6'
+    assert snap['vehicle_positions'][0]['stop_id'] == '631N'
+    assert snap['vehicle_positions'][0]['status'] == 'STOPPED_AT'
+
+
+def test_ingest_vehicle_positions_keyed_by_trip_id():
+    state = LiveState()
+    vp1 = VehiclePosition('trip-1', '6', '631N', 'STOPPED_AT', datetime.now(timezone.utc))
+    vp2 = VehiclePosition('trip-1', '6', '632N', 'IN_TRANSIT_TO', datetime.now(timezone.utc))
+    state.ingest([], [], [vp1, vp2])
+    snap = state.snapshot()
+    # trip-1 appears only once — last write wins
+    positions = snap['vehicle_positions']
+    assert len(positions) == 1
+    assert positions[0]['stop_id'] == '632N'
+
+
+def test_ingest_vehicle_positions_defaults_to_empty():
+    state = LiveState()
+    state.ingest([], [])  # no third arg — backward-compatible
+    snap = state.snapshot()
+    assert snap['vehicle_positions'] == []

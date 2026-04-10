@@ -16,6 +16,7 @@ export function MyStations({ liveData, stationsCtx }: Props) {
   const [showSearch, setShowSearch] = useState(false)
 
   function addStop(stop_id: string, name: string) {
+    // Direction hardcoded to 'N' — direction selection UI is out of scope for this feature
     addStation({ stop_id: stop_id + 'N', name, direction: 'N', route_ids: [] })
     setShowSearch(false)
   }
@@ -41,7 +42,7 @@ export function MyStations({ liveData, stationsCtx }: Props) {
           <div style={{ marginBottom: 16 }}>
             <StationSearchInput
               placeholder="Search station or NYC address..."
-              onSelect={(stop_id, name) => addStop(stop_id, name)}
+              onSelect={addStop}
             />
           </div>
         )}

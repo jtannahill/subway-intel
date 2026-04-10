@@ -50,7 +50,7 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
         <div className="label" style={{ marginBottom: 6 }}>FROM</div>
         <StationSearchInput
           placeholder="Search origin station or address..."
-          onSelect={(stop_id) => setOrigin(stop_id + 'N')}
+          onSelect={(stop_id) => setOrigin(stop_id + 'N')} // 'N' direction hardcoded; direction UI out of scope
         />
       </div>
 
@@ -59,7 +59,7 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
         <div className="label" style={{ marginBottom: 6 }}>TO</div>
         <StationSearchInput
           placeholder="Search destination station or address..."
-          onSelect={(stop_id) => setDest(stop_id + 'N')}
+          onSelect={(stop_id) => setDest(stop_id + 'N')} // 'N' direction hardcoded; direction UI out of scope
         />
       </div>
 

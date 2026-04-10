@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 
-const MAPBOX_TOKEN = (import.meta.env.VITE_MAPBOX_TOKEN as string) ?? ''
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN ?? ''
 const NYC_BBOX = '-74.26,40.48,-73.70,40.92'
 
 export interface StationResult {
@@ -57,8 +57,9 @@ export function useStationSearch(query: string): SearchResults {
 
       try {
         const [stationRes, mapboxRes] = await Promise.all([stationFetch, mapboxFetch])
-        const stationData = await stationRes.json()
-        const stations: StationResult[] = stationData.results ?? []
+        const stations: StationResult[] = stationRes.ok
+          ? ((await stationRes.json()).results ?? [])
+          : []
 
         let addresses: AddressResult[] = []
         if (mapboxRes?.ok) {
@@ -74,12 +75,15 @@ export function useStationSearch(query: string): SearchResults {
       } catch (e: unknown) {
         if (e instanceof Error && e.name !== 'AbortError') {
           setResults({ stations: [], addresses: [], loading: false })
+        } else if (e instanceof Error && e.name === 'AbortError') {
+          setResults(prev => ({ ...prev, loading: false }))
         }
       }
     }, 200)
 
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
+      if (abortRef.current) abortRef.current.abort()
     }
   }, [query])
 

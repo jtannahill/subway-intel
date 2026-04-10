@@ -19,7 +19,6 @@ from backend.api.websocket import manager
 logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(name)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-MTA_API_KEY = os.environ.get('MTA_API_KEY', '')
 POLL_INTERVAL = int(os.environ.get('GTFS_POLL_INTERVAL_SEC', '30'))
 
 _live_state = LiveState()
@@ -34,7 +33,7 @@ async def poll_loop() -> None:
                 all_records = []
                 all_alerts = []
                 for feed_id, url in MTA_FEED_URLS.items():
-                    data = await fetch_feed(url, MTA_API_KEY, client)
+                    data = await fetch_feed(url, client)
                     all_records.extend(parse_feed(data))
                     all_alerts.extend(parse_alerts(data))
 

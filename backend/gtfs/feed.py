@@ -92,10 +92,10 @@ def parse_alerts(data: bytes) -> list[ServiceAlert]:
     return alerts
 
 
-async def fetch_feed(url: str, api_key: str, client: httpx.AsyncClient) -> bytes:
+async def fetch_feed(url: str, client: httpx.AsyncClient) -> bytes:
     """Fetch a single GTFS-RT feed URL. Returns empty bytes on failure."""
     try:
-        resp = await client.get(url, headers={'x-api-key': api_key}, timeout=10.0)
+        resp = await client.get(url, timeout=10.0)
         resp.raise_for_status()
         return resp.content
     except Exception as e:

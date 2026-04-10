@@ -3,7 +3,6 @@ import * as ec2 from 'aws-cdk-lib/aws-ec2'
 import * as ecs from 'aws-cdk-lib/aws-ecs'
 import * as ecsPatterns from 'aws-cdk-lib/aws-ecs-patterns'
 import * as rds from 'aws-cdk-lib/aws-rds'
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager'
 import { Construct } from 'constructs'
 
 interface Props extends cdk.StackProps {
@@ -14,11 +13,6 @@ interface Props extends cdk.StackProps {
 export class FargateStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: Props) {
     super(scope, id, props)
-
-    const mtaSecret = new secretsmanager.Secret(this, 'MtaApiKey', {
-      secretName: 'subway-intel/mta-api-key',
-      description: 'MTA GTFS-RT API key',
-    })
 
     const cluster = new ecs.Cluster(this, 'Cluster', { vpc: props.vpc })
 
@@ -35,12 +29,11 @@ export class FargateStack extends cdk.Stack {
         containerPort: 8000,
         environment: { GTFS_POLL_INTERVAL_SEC: '30' },
         secrets: {
-          MTA_API_KEY: ecs.Secret.fromSecretsManager(mtaSecret),
-          DB_HOST:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'host'),
-          DB_PORT:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'port'),
-          DB_NAME:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'dbname'),
-          DB_USER:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'username'),
-          DB_PASS:     ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'password'),
+          DB_HOST: ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'host'),
+          DB_PORT: ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'port'),
+          DB_NAME: ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'dbname'),
+          DB_USER: ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'username'),
+          DB_PASS: ecs.Secret.fromSecretsManager(props.dbInstance.secret!, 'password'),
         },
       },
       publicLoadBalancer: true,

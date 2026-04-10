@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from backend.api.websocket import manager
 from backend.gtfs import state as live_state_module
-from backend.gtfs.static import get_travel_sec, nearest_stops, search_stops
+from backend.gtfs.static import get_route_stops, get_travel_sec, nearest_stops, search_stops
 from backend.heuristics.commute import compute_departure
 from backend.heuristics.delay import compute_delay_signals
 
@@ -91,6 +91,14 @@ async def search_stops_api(q: str, limit: int = 10):
 @router.get('/api/stops/nearest')
 async def get_nearest_stops(lat: float, lon: float, limit: int = 1):
     return {'results': nearest_stops(lat, lon, limit)}
+
+
+@router.get('/api/routes/{route_id}/stops')
+async def get_route_stops_endpoint(route_id: str, direction: int = 1):
+    stops = get_route_stops(route_id, direction)
+    if not stops:
+        raise HTTPException(404, f'No stop sequence for route {route_id} direction {direction}')
+    return {'route_id': route_id, 'direction': direction, 'stops': stops}
 
 
 @router.websocket('/ws')

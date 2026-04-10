@@ -60,3 +60,26 @@ def test_nearest_stops_endpoint_empty_stops_returns_empty():
         resp = _client.get('/api/stops/nearest?lat=40.756&lon=-73.986')
     assert resp.status_code == 200
     assert resp.json() == {'results': []}
+
+
+def test_route_stops_endpoint_returns_stop_list():
+    mock_route_stops = {
+        ('6', 1): [
+            {'stop_id': '640', 'name': 'Pelham Bay Park'},
+            {'stop_id': '631', 'name': 'Grand Central-42 St'},
+        ]
+    }
+    with patch('backend.gtfs.static._route_stops', mock_route_stops):
+        resp = _client.get('/api/routes/6/stops?direction=1')
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data['route_id'] == '6'
+    assert data['direction'] == 1
+    assert len(data['stops']) == 2
+    assert data['stops'][0]['stop_id'] == '640'
+
+
+def test_route_stops_endpoint_404_for_unknown_route():
+    with patch('backend.gtfs.static._route_stops', {}):
+        resp = _client.get('/api/routes/Z99/stops?direction=0')
+    assert resp.status_code == 404

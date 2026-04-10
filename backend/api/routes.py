@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from backend.api.websocket import manager
 from backend.gtfs import state as live_state_module
-from backend.gtfs.static import get_travel_sec, search_stops
+from backend.gtfs.static import get_travel_sec, nearest_stops, search_stops
 from backend.heuristics.commute import compute_departure
 from backend.heuristics.delay import compute_delay_signals
 
@@ -86,6 +86,11 @@ async def get_delay_intel():
 @router.get('/api/stops/search')
 async def search_stops_api(q: str, limit: int = 10):
     return {'results': search_stops(q, limit)}
+
+
+@router.get('/api/stops/nearest')
+async def get_nearest_stops(lat: float, lon: float, limit: int = 1):
+    return {'results': nearest_stops(lat, lon, limit)}
 
 
 @router.websocket('/ws')

@@ -42,13 +42,13 @@ async def get_arrivals(stop_id: str):
 async def get_commute(origin: str, destination: str):
     if _state is None:
         raise HTTPException(503, 'State not ready')
-    arrivals = _state.get_arrivals(origin)
+    arrivals = _state.get_arrivals(origin, limit=3)
     if not arrivals:
         raise HTTPException(404, f'No upcoming trains at {origin}')
     travel_sec = get_travel_sec(origin, destination)
     if travel_sec is None:
         raise HTTPException(404, f'No route found from {origin} to {destination}')
-    return compute_departure(next_arrival=arrivals[0], travel_sec=travel_sec)
+    return {'options': [compute_departure(next_arrival=a, travel_sec=travel_sec) for a in arrivals]}
 
 
 @router.get('/api/network')

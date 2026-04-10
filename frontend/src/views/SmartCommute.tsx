@@ -7,7 +7,7 @@ interface Props {
   stationsCtx: { stations: SavedStation[] }
 }
 
-interface CommuteResult {
+interface CommuteOption {
   leave_in_sec: number
   board_at: string
   arrive_at: string
@@ -23,7 +23,7 @@ function fmt(isoTime: string): string {
 export function SmartCommute({ liveData, stationsCtx }: Props) {
   const [origin, setOrigin] = useState('')
   const [dest, setDest] = useState('')
-  const [result, setResult] = useState<CommuteResult | null>(null)
+  const [options, setOptions] = useState<CommuteOption[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -32,7 +32,6 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
   const [originName, setOriginName] = useState('')
   const [destName, setDestName] = useState('')
 
-  // Available for future use (e.g. pre-populate from saved stations)
   void liveData
   void stationsCtx
 
@@ -45,16 +44,15 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
 
   async function calculate() {
     if (!origin || !dest) { setError('Select both origin and destination.'); return }
-    setLoading(true); setError(''); setResult(null)
+    setLoading(true); setError(''); setOptions([])
     try {
       const res = await fetch(`/api/commute?origin=${origin}&destination=${dest}`)
       if (!res.ok) { setError('No route found between these stops.'); return }
-      setResult(await res.json())
+      const data = await res.json()
+      setOptions(data.options ?? [])
     } catch { setError('Network error — is the backend running?') }
     finally { setLoading(false) }
   }
-
-  const leaveInMin = result ? Math.round(result.leave_in_sec / 60) : null
 
   return (
     <div>
@@ -69,11 +67,11 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
           placeholder="Search origin station..."
           style={{ all: 'unset', display: 'block', width: '100%', background: 'var(--bg-surface)',
             border: '1px solid var(--border)', borderRadius: 3, padding: '8px 12px',
-            color: 'var(--text-primary)', fontSize: 12 }} />
+            color: 'var(--text-primary)', fontSize: 14 }} />
         {originResults.map(r => (
           <button key={r.stop_id} onClick={() => { setOrigin(r.stop_id + 'N'); setOriginName(r.name); setOriginResults([]) }}
             style={{ all: 'unset', display: 'block', width: '100%', padding: '8px 12px', cursor: 'pointer',
-              color: 'var(--text-primary)', fontSize: 11, background: 'var(--bg-elevated)',
+              color: 'var(--text-primary)', fontSize: 13, background: 'var(--bg-elevated)',
               borderBottom: '1px solid var(--border)' }}>
             {r.name}
           </button>
@@ -87,11 +85,11 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
           placeholder="Search destination station..."
           style={{ all: 'unset', display: 'block', width: '100%', background: 'var(--bg-surface)',
             border: '1px solid var(--border)', borderRadius: 3, padding: '8px 12px',
-            color: 'var(--text-primary)', fontSize: 12 }} />
+            color: 'var(--text-primary)', fontSize: 14 }} />
         {destResults.map(r => (
           <button key={r.stop_id} onClick={() => { setDest(r.stop_id + 'N'); setDestName(r.name); setDestResults([]) }}
             style={{ all: 'unset', display: 'block', width: '100%', padding: '8px 12px', cursor: 'pointer',
-              color: 'var(--text-primary)', fontSize: 11, background: 'var(--bg-elevated)',
+              color: 'var(--text-primary)', fontSize: 13, background: 'var(--bg-elevated)',
               borderBottom: '1px solid var(--border)' }}>
             {r.name}
           </button>
@@ -102,29 +100,63 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
         all: 'unset', cursor: loading ? 'default' : 'pointer',
         background: 'var(--green-dim)', border: '1px solid var(--green-border)',
         borderRadius: 3, padding: '10px 20px', color: 'var(--green)',
-        fontSize: 11, letterSpacing: '0.05em',
+        fontSize: 13, letterSpacing: '0.05em',
       }}>
         {loading ? 'CALCULATING...' : 'CALCULATE'}
       </button>
 
-      {error && <div style={{ color: 'var(--red)', fontSize: 11, marginTop: 12 }}>{error}</div>}
+      {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
 
-      {result && (
-        <div className="card" style={{ marginTop: 24 }}>
-          <div className="label" style={{ marginBottom: 16 }}>RECOMMENDATION</div>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 16 }}>
-            <span className="mono-lg" style={{ fontSize: 48, color: 'var(--green)' }}>{leaveInMin}</span>
-            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>minutes to leave</span>
-          </div>
-          <div style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.8 }}>
-            Take the <span style={{ color: 'var(--text-primary)' }}>{result.route_id}</span> at{' '}
-            <span style={{ color: 'var(--text-primary)' }}>{fmt(result.board_at)}</span>
-            {result.delay_sec > 30 && (
-              <span style={{ color: 'var(--amber)' }}> (+{Math.round(result.delay_sec / 60)}m delay)</span>
-            )}
-            <br />
-            Arrives at <span style={{ color: 'var(--text-primary)' }}>{fmt(result.arrive_at)}</span>
-          </div>
+      {options.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <div className="label" style={{ marginBottom: 12 }}>DEPARTURES</div>
+          {options.map((opt, i) => {
+            const leaveInMin = Math.round(opt.leave_in_sec / 60)
+            const isNow = leaveInMin === 0
+            const isFirst = i === 0
+            return (
+              <div key={opt.trip_id} className={`card ${isFirst ? '' : ''}`} style={{
+                marginBottom: 8,
+                borderColor: isFirst ? (isNow ? 'var(--amber-border)' : 'var(--green-border)') : 'var(--border)',
+                opacity: isFirst ? 1 : 0.7,
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                  {/* Leave in */}
+                  <div style={{ minWidth: 80, textAlign: 'center' }}>
+                    {isNow ? (
+                      <div style={{ color: 'var(--amber)', fontSize: 13, fontWeight: 700, letterSpacing: '0.08em' }}>
+                        LEAVE NOW
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ fontSize: isFirst ? 40 : 28, fontWeight: 700, color: isFirst ? 'var(--green)' : 'var(--text-muted)', lineHeight: 1 }}>
+                          {leaveInMin}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>min to leave</div>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Divider */}
+                  <div style={{ width: 1, height: 40, background: 'var(--border)' }} />
+
+                  {/* Details */}
+                  <div style={{ flex: 1 }}>
+                    <div style={{ color: 'var(--text-primary)', fontSize: 14, marginBottom: 4 }}>
+                      <span style={{ fontWeight: 700 }}>{opt.route_id}</span>
+                      {' train · board '}<span style={{ color: 'var(--green)' }}>{fmt(opt.board_at)}</span>
+                      {opt.delay_sec > 30 && (
+                        <span style={{ color: 'var(--amber)', fontSize: 12 }}> +{Math.round(opt.delay_sec / 60)}m delay</span>
+                      )}
+                    </div>
+                    <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
+                      Arrives {fmt(opt.arrive_at)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

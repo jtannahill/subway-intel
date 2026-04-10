@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import logging
 from datetime import datetime, timezone
 
@@ -8,6 +9,23 @@ from google.transit import gtfs_realtime_pb2
 from backend.gtfs.models import ArrivalRecord, ServiceAlert
 
 logger = logging.getLogger(__name__)
+
+MTA_ALERTS_JSON_URL = (
+    'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/camsys%2Fsubway-alerts.json'
+)
+
+# GTFS-RT Effect integer → name mapping (subset used for severity classification)
+_EFFECT_NAMES: dict[int, str] = {
+    1: 'NO_SERVICE',
+    2: 'REDUCED_SERVICE',
+    3: 'SIGNIFICANT_DELAYS',
+    4: 'DETOUR',
+    5: 'ADDITIONAL_SERVICE',
+    6: 'MODIFIED_SERVICE',
+    7: 'OTHER_EFFECT',
+    8: 'UNKNOWN_EFFECT',
+    9: 'STOP_MOVED',
+}
 
 MTA_FEED_URLS = {
     'gtfs':     'https://api-endpoint.mta.info/Dataservice/mtagtfsfeeds/nyct%2Fgtfs',
@@ -80,6 +98,64 @@ def parse_alerts(data: bytes) -> list[ServiceAlert]:
         # rather than str(alert.effect) which yields the raw integer as a string (e.g. '6').
         effect = gtfs_realtime_pb2.Alert.Effect.Name(alert.effect)
         severity = 'HIGH' if 'SERVICE' in effect and 'NO' in effect else 'LOW'
+        if not routes and header:
+            routes = ['ALL']
+        for route_id in routes:
+            alerts.append(ServiceAlert(
+                route_id=route_id,
+                effect=effect,
+                severity=severity,
+                header=header,
+            ))
+    return alerts
+
+
+def parse_alerts_json(data: bytes) -> list[ServiceAlert]:
+    """Parse the MTA camsys subway-alerts JSON feed.
+
+    The feed mirrors the GTFS-RT Alert structure serialised as JSON:
+      { "entity": [ { "id": "...", "alert": { "informed_entity": [...],
+                       "header_text": {"translation": [{"text": "..."}]},
+                       "effect": <int or str> } } ] }
+    """
+    if not data:
+        return []
+    try:
+        payload = json.loads(data)
+    except Exception as e:
+        logger.warning('Failed to parse MTA alerts JSON: %s', e)
+        return []
+
+    alerts: list[ServiceAlert] = []
+    for entity in payload.get('entity', []):
+        alert_obj = entity.get('alert', {})
+        if not alert_obj:
+            continue
+
+        # Informed entities → route IDs
+        routes = [
+            ie['route_id']
+            for ie in alert_obj.get('informed_entity', [])
+            if ie.get('route_id')
+        ]
+
+        # Header text (English preferred)
+        header = ''
+        for t in alert_obj.get('header_text', {}).get('translation', []):
+            if t.get('language', 'en') == 'en' or not header:
+                header = t.get('text', '')
+                if t.get('language', '') == 'en':
+                    break
+
+        # Effect — integer enum or string name
+        raw_effect = alert_obj.get('effect', 8)  # 8 = UNKNOWN_EFFECT
+        if isinstance(raw_effect, int):
+            effect = _EFFECT_NAMES.get(raw_effect, 'UNKNOWN_EFFECT')
+        else:
+            effect = str(raw_effect)
+
+        severity = 'HIGH' if effect in ('NO_SERVICE', 'REDUCED_SERVICE') else 'LOW'
+
         if not routes and header:
             routes = ['ALL']
         for route_id in routes:

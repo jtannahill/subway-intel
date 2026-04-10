@@ -11,7 +11,14 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.api.routes import router, set_state
 from backend.db.client import close_pool, init_pool
-from backend.gtfs.feed import MTA_FEED_URLS, fetch_feed, parse_alerts, parse_feed
+from backend.gtfs.feed import (
+    MTA_ALERTS_JSON_URL,
+    MTA_FEED_URLS,
+    fetch_feed,
+    parse_alerts,
+    parse_alerts_json,
+    parse_feed,
+)
 from backend.gtfs.state import LiveState
 from backend.gtfs import static as gtfs_static
 from backend.api.websocket import manager
@@ -36,6 +43,10 @@ async def poll_loop() -> None:
                     data = await fetch_feed(url, client)
                     all_records.extend(parse_feed(data))
                     all_alerts.extend(parse_alerts(data))
+
+                # Customer-facing alerts (JSON format — separate from GTFS-RT protobuf)
+                alerts_json_data = await fetch_feed(MTA_ALERTS_JSON_URL, client)
+                all_alerts.extend(parse_alerts_json(alerts_json_data))
 
                 _live_state.ingest(all_records, all_alerts)
                 snapshot = _live_state.snapshot()

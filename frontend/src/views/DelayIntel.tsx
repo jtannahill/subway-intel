@@ -1,5 +1,6 @@
 import type { LiveData, LineHealthEntry } from '../hooks/useLiveData'
 import { LineBadge } from '../components/LineBadge'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 
 interface Props { liveData: LiveData }
 
@@ -29,6 +30,7 @@ export function DelayIntel({ liveData }: Props) {
   const sorted = [...liveData.lineHealth].sort(
     (a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status]
   )
+  const isMobile = useMediaQuery('(max-width: 768px)')
 
   return (
     <div style={{ gridColumn: '1 / -1' }}>
@@ -39,45 +41,49 @@ export function DelayIntel({ liveData }: Props) {
         Heuristic signals derived from live GTFS-RT feed · 15-min rolling window
       </div>
 
-      {/* Table header */}
-      <div style={{
-        display: 'grid', gridTemplateColumns: '40px 1fr 90px 90px 80px 60px',
-        gap: 8, padding: '6px 14px', borderBottom: '1px solid var(--border)',
-      }}>
-        {['LINE', 'STATUS', 'AVG DELAY', 'HW VARIANCE', 'TREND', 'ALERTS'].map(h => (
-          <div key={h} className="label">{h}</div>
-        ))}
-      </div>
-
-      {sorted.length === 0 ? (
-        <div style={{ color: 'var(--text-muted)', fontSize: 11, padding: '20px 14px' }}>
-          Waiting for feed data...
+      <div style={{ overflowX: isMobile ? 'auto' : 'visible' }}>
+        {/* Table header */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: '40px 1fr 90px 90px 80px 60px',
+          gap: 8, padding: '6px 14px', borderBottom: '1px solid var(--border)',
+          minWidth: isMobile ? 480 : undefined,
+        }}>
+          {['LINE', 'STATUS', 'AVG DELAY', 'HW VARIANCE', 'TREND', 'ALERTS'].map(h => (
+            <div key={h} className="label">{h}</div>
+          ))}
         </div>
-      ) : (
-        sorted.map(h => (
-          <div key={h.route_id} style={{
-            display: 'grid', gridTemplateColumns: '40px 1fr 90px 90px 80px 60px',
-            gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-dim)',
-            alignItems: 'center',
-          }}>
-            <div><LineBadge routeId={h.route_id} size={20} /></div>
-            <div>
-              <span style={{ color: STATUS_COLORS[h.status], fontSize: 11 }}>{h.status}</span>
-              <GapFlag h={h} />
-            </div>
-            <div style={{ color: 'var(--text-primary)', fontSize: 11 }}>
-              {Math.round(h.avg_delay_sec)}s
-            </div>
-            <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
-              ±{Math.round(Math.sqrt(h.headway_variance))}s
-            </div>
-            <div style={{ fontSize: 14 }}><TrendArrow h={h} /></div>
-            <div style={{ color: h.alerts.length > 0 ? 'var(--amber)' : 'var(--text-faint)', fontSize: 11 }}>
-              {h.alerts.length > 0 ? h.alerts.length : '—'}
-            </div>
+
+        {sorted.length === 0 ? (
+          <div style={{ color: 'var(--text-muted)', fontSize: 11, padding: '20px 14px' }}>
+            Waiting for feed data...
           </div>
-        ))
-      )}
+        ) : (
+          sorted.map(h => (
+            <div key={h.route_id} style={{
+              display: 'grid', gridTemplateColumns: '40px 1fr 90px 90px 80px 60px',
+              gap: 8, padding: '10px 14px', borderBottom: '1px solid var(--border-dim)',
+              alignItems: 'center',
+              minWidth: isMobile ? 480 : undefined,
+            }}>
+              <div><LineBadge routeId={h.route_id} size={20} /></div>
+              <div>
+                <span style={{ color: STATUS_COLORS[h.status], fontSize: 11 }}>{h.status}</span>
+                <GapFlag h={h} />
+              </div>
+              <div style={{ color: 'var(--text-primary)', fontSize: 11 }}>
+                {Math.round(h.avg_delay_sec)}s
+              </div>
+              <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                ±{Math.round(Math.sqrt(h.headway_variance))}s
+              </div>
+              <div style={{ fontSize: 14 }}><TrendArrow h={h} /></div>
+              <div style={{ color: h.alerts.length > 0 ? 'var(--amber)' : 'var(--text-faint)', fontSize: 11 }}>
+                {h.alerts.length > 0 ? h.alerts.length : '—'}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
 
       <div style={{ marginTop: 24, padding: 14, background: 'var(--bg-surface)', borderRadius: 3, border: '1px solid var(--border)' }}>
         <div className="label" style={{ marginBottom: 8 }}>SIGNAL DEFINITIONS</div>

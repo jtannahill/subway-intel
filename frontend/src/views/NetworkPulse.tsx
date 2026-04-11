@@ -2,6 +2,7 @@ import { useState } from 'react'
 import type { LiveData, LineHealthEntry } from '../hooks/useLiveData'
 import { LineBadge } from '../components/LineBadge'
 import { TrackDiagram } from '../components/TrackDiagram'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 
 interface Props { liveData: LiveData }
 
@@ -33,9 +34,26 @@ function worstHealth(routes: string[], health: LineHealthEntry[]): LineHealthEnt
   return { ...sorted[0], avg_delay_sec: avg }
 }
 
+type SortKey = 'delay' | 'variance' | 'trend' | 'alerts'
+
+const STATUS_ORDER = { DISRUPTED: 2, DELAYED: 1, NOMINAL: 0 }
+
 export function NetworkPulse({ liveData }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<SortKey | null>(null)
+  const [sortDesc, setSortDesc] = useState(true)
+  const isMobile = useMediaQuery('(max-width: 768px)')
   const toggle = (label: string) => setExpanded(v => v === label ? null : label)
+
+  function cycleSort(key: SortKey) {
+    if (sortKey === key) {
+      if (sortDesc) setSortDesc(false)
+      else { setSortKey(null); setSortDesc(true) }
+    } else {
+      setSortKey(key)
+      setSortDesc(true)
+    }
+  }
 
   const summary = {
     nominal:   liveData.lineHealth.filter(h => h.status === 'NOMINAL').length,
@@ -50,7 +68,13 @@ export function NetworkPulse({ liveData }: Props) {
 
   return (
     // Span both parent grid columns, manage own inner 2-col layout
-    <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
+    <div style={{
+      gridColumn: '1 / -1',
+      display: 'grid',
+      gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
+      gap: 16,
+      alignItems: 'start',
+    }}>
 
       {/* LEFT: Summary + offenders */}
       <div>
@@ -109,10 +133,44 @@ export function NetworkPulse({ liveData }: Props) {
 
       {/* RIGHT: Line group accordion */}
       <div>
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
           <span className="label" style={{ fontSize: 14, color: 'var(--text-primary)' }}>LINE GROUPS</span>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
+            {([
+              { key: 'trend',    label: 'TREND' },
+              { key: 'delay',    label: 'AVG DELAY' },
+              { key: 'variance', label: 'HW VARIANCE' },
+              { key: 'alerts',   label: 'ALERTS' },
+            ] as { key: SortKey; label: string }[]).map(({ key, label }) => {
+              const active = sortKey === key
+              return (
+                <button key={key} onClick={() => cycleSort(key)} style={{
+                  all: 'unset', cursor: 'pointer',
+                  fontSize: 7, letterSpacing: '0.1em', padding: '2px 6px',
+                  borderRadius: 2,
+                  background: active ? 'var(--green-dim)' : 'transparent',
+                  border: `1px solid ${active ? 'var(--green-border)' : 'var(--border)'}`,
+                  color: active ? 'var(--green)' : 'var(--text-faint)',
+                }}>
+                  {label}{active ? (sortDesc ? ' ▼' : ' ▲') : ''}
+                </button>
+              )
+            })}
+          </div>
         </div>
-        {LINE_GROUPS.map(({ label, routes }) => {
+        {(sortKey
+          ? [...LINE_GROUPS].sort((a, b) => {
+              const ha = worstHealth(a.routes, liveData.lineHealth)
+              const hb = worstHealth(b.routes, liveData.lineHealth)
+              let va = 0, vb = 0
+              if (sortKey === 'delay')    { va = ha?.avg_delay_sec ?? 0;   vb = hb?.avg_delay_sec ?? 0 }
+              if (sortKey === 'variance') { va = ha?.headway_variance ?? 0; vb = hb?.headway_variance ?? 0 }
+              if (sortKey === 'trend')    { va = STATUS_ORDER[ha?.status ?? 'NOMINAL']; vb = STATUS_ORDER[hb?.status ?? 'NOMINAL'] }
+              if (sortKey === 'alerts')   { va = ha?.alerts.length ?? 0;    vb = hb?.alerts.length ?? 0 }
+              return sortDesc ? vb - va : va - vb
+            })
+          : LINE_GROUPS
+        ).map(({ label, routes }) => {
           const h = worstHealth(routes, liveData.lineHealth)
           const status = h?.status ?? 'NOMINAL'
           const colors = STATUS_COLORS[status]
@@ -175,3 +233,4 @@ export function NetworkPulse({ liveData }: Props) {
     </div>
   )
 }
+

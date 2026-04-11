@@ -52,7 +52,7 @@ export function TrackDiagram({ routeId, vehiclePositions, lineHealth, myStopId }
   const isDelayed = (health?.avg_delay_sec ?? 0) > 60
   const myBase = myStopId?.replace(/[NS]$/, '')
 
-  const totalWidth = stops.length * (SLOT + CONN)
+  const totalWidth = stops.length * SLOT + Math.max(0, stops.length - 1) * CONN
 
   function getDotStyle(
     stop: Stop,
@@ -73,7 +73,9 @@ export function TrackDiagram({ routeId, vehiclePositions, lineHealth, myStopId }
     const shadow = hasTrain
       ? (isDelayed ? '0 0 8px #f59e0b88' : '0 0 8px #22c55e88')
       : isMyStop ? '0 0 4px var(--amber)' : 'none'
-    const anim = hasTrain && isApproaching ? 'pulse-glow 1.2s ease-out infinite' : 'none'
+    const anim = hasTrain && isApproaching
+      ? (isDelayed ? 'pulse-glow-amber 1.2s ease-out infinite' : 'pulse-glow 1.2s ease-out infinite')
+      : 'none'
     const left = i * (SLOT + CONN) + (SLOT - size) / 2
     const top = (20 - size) / 2
     return { size, bg, border, shadow, anim, left, top }

@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import type { LiveData } from '../hooks/useLiveData'
 
-type View = 'stations' | 'pulse' | 'intel'
+type View = 'stations' | 'nearby' | 'pulse' | 'intel'
 
 interface Props {
   active: View
@@ -11,6 +11,7 @@ interface Props {
 
 const NAV: { id: View; label: string }[] = [
   { id: 'stations', label: 'MY STATIONS' },
+  { id: 'nearby',   label: 'NEARBY' },
   { id: 'pulse',    label: 'NETWORK PULSE' },
   { id: 'intel',    label: 'DELAY INTEL' },
 ]

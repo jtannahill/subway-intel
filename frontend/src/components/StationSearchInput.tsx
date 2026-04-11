@@ -106,6 +106,8 @@ export function StationSearchInput({
     background: 'var(--bg)', borderBottom: '1px solid var(--border)',
   }
 
+  let itemIdx = -1
+
   return (
     <div ref={containerRef} style={{ position: 'relative' }}>
       <input
@@ -129,44 +131,52 @@ export function StationSearchInput({
           {stations.length > 0 && (
             <>
               <div style={sectionHeaderStyle}>STATIONS</div>
-              {stations.map((s, si) => (
-                <button
-                  key={s.stop_id}
-                  onMouseDown={e => { e.preventDefault(); selectStation(s) }}
-                  style={{
-                    all: 'unset', display: 'block', width: '100%',
-                    padding: '8px 12px', cursor: 'pointer', fontSize: 12,
-                    color: 'var(--text-primary)',
-                    background: highlighted === si ? 'var(--bg-elevated)' : 'transparent',
-                    borderBottom: '1px solid var(--border)',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  {highlightMatch(s.name)}
-                </button>
-              ))}
+              {stations.map(s => {
+                itemIdx++
+                const idx = itemIdx
+                return (
+                  <button
+                    key={s.stop_id}
+                    onMouseDown={e => { e.preventDefault(); selectStation(s) }}
+                    style={{
+                      all: 'unset', display: 'block', width: '100%',
+                      padding: '8px 12px', cursor: 'pointer', fontSize: 12,
+                      color: 'var(--text-primary)',
+                      background: highlighted === idx ? 'var(--bg-elevated)' : 'transparent',
+                      borderBottom: '1px solid var(--border)',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    {highlightMatch(s.name)}
+                  </button>
+                )
+              })}
             </>
           )}
 
           {addresses.length > 0 && (
             <>
               <div style={sectionHeaderStyle}>ADDRESSES</div>
-              {addresses.map((a, ai) => (
-                <button
-                  key={a.place_name}
-                  onMouseDown={e => { e.preventDefault(); selectAddress(a) }}
-                  style={{
-                    all: 'unset', display: 'block', width: '100%',
-                    padding: '8px 12px', cursor: 'pointer', fontSize: 11,
-                    color: 'var(--text-muted)',
-                    background: highlighted === stations.length + ai ? 'var(--bg-elevated)' : 'transparent',
-                    borderBottom: '1px solid var(--border)',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  📍 {a.place_name}
-                </button>
-              ))}
+              {addresses.map((a, i) => {
+                itemIdx++
+                const idx = itemIdx
+                return (
+                  <button
+                    key={i}
+                    onMouseDown={e => { e.preventDefault(); selectAddress(a) }}
+                    style={{
+                      all: 'unset', display: 'block', width: '100%',
+                      padding: '8px 12px', cursor: 'pointer', fontSize: 11,
+                      color: 'var(--text-muted)',
+                      background: highlighted === idx ? 'var(--bg-elevated)' : 'transparent',
+                      borderBottom: '1px solid var(--border)',
+                      boxSizing: 'border-box',
+                    }}
+                  >
+                    📍 {a.place_name}
+                  </button>
+                )
+              })}
             </>
           )}
 

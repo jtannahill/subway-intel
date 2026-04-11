@@ -30,6 +30,7 @@ export function useNearby(): { state: NearbyStatus; start: () => void } {
 
   const watchIdRef = useRef<number | null>(null)
   const lastFetchCoordsRef = useRef<Coords | null>(null)
+  const abortRef = useRef<AbortController | null>(null)
 
   const onError = useCallback((err: GeolocationPositionError) => {
     let message: string
@@ -61,8 +62,14 @@ export function useNearby(): { state: NearbyStatus; start: () => void } {
 
     lastFetchCoordsRef.current = current
 
-    fetch(`/api/stops/nearest?lat=${lat}&lon=${lon}&limit=1`)
-      .then((res) => res.json())
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
+
+    fetch(`/api/stops/nearest?lat=${lat}&lon=${lon}&limit=1`, { signal: abortRef.current.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json() as Promise<NearbyStation[]>
+      })
       .then((results: NearbyStation[]) => {
         if (results.length === 0) {
           setState({ status: 'error', message: 'No stations found nearby.' })
@@ -70,7 +77,8 @@ export function useNearby(): { state: NearbyStatus; start: () => void } {
           setState({ status: 'tracking', station: results[0], coords: { lat, lon } })
         }
       })
-      .catch(() => {
+      .catch((e: unknown) => {
+        if (e instanceof Error && e.name === 'AbortError') return
         setState({ status: 'error', message: 'Failed to fetch nearest station.' })
       })
   }, [])
@@ -93,9 +101,8 @@ export function useNearby(): { state: NearbyStatus; start: () => void } {
 
   useEffect(() => {
     return () => {
-      if (watchIdRef.current !== null) {
-        navigator.geolocation.clearWatch(watchIdRef.current)
-      }
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current)
+      abortRef.current?.abort()
     }
   }, [])
 

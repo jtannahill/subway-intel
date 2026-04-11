@@ -38,7 +38,9 @@ export function NearbyView({ liveData }: Props) {
 
   const sortedRoutes = [...routeMap.entries()].sort((a, b) => a[1].minUntil - b[1].minUntil)
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Create a stable string key from route IDs to catch same-size route changes
+  const routeKey = [...routeMap.keys()].sort().join(',')
+
   const routeIds = useMemo(
     () =>
       routeMap.size > 0
@@ -46,9 +48,8 @@ export function NearbyView({ liveData }: Props) {
             .sort((a, b) => a[1].minUntil - b[1].minUntil)
             .map(([rid]) => rid)
         : liveData.lineHealth.map(h => h.route_id),
-    // routeMap is recreated every render, so use .size as a stable proxy
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [routeMap.size, liveData.lineHealth],
+    [routeKey, liveData.lineHealth],
   )
 
   const activeRoute =

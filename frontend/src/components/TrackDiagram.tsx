@@ -1,182 +1,151 @@
-import { useState, useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { VehiclePositionEntry, LineHealthEntry } from '../hooks/useLiveData'
 
-interface Stop {
-  stop_id: string
-  name: string
-}
+interface Stop { stop_id: string; name: string }
 
 interface Props {
   routeId: string
   vehiclePositions: VehiclePositionEntry[]
   lineHealth: LineHealthEntry[]
+  myStopId?: string
 }
 
-export function TrackDiagram({ routeId, vehiclePositions, lineHealth }: Props) {
-  const [direction, setDirection] = useState<0 | 1>(1)
+const SLOT = 16  // px: width of each stop's "column"
+const CONN = 20  // px: width of the connector rail between stops
+
+export function TrackDiagram({ routeId, vehiclePositions, lineHealth, myStopId }: Props) {
   const [stops, setStops] = useState<Stop[]>([])
-  const [error, setError] = useState('')
+  const [error, setError] = useState(false)
   const cacheRef = useRef<Record<string, Stop[]>>({})
 
   useEffect(() => {
-    const key = `${routeId}-${direction}`
-    if (cacheRef.current[key]) {
-      setStops(cacheRef.current[key])
-      return
-    }
-    setError('')
-    fetch(`/api/routes/${routeId}/stops?direction=${direction}`)
-      .then(r => r.ok ? r.json() : Promise.reject(r.status))
-      .then(data => {
-        const s: Stop[] = data.stops ?? []
-        cacheRef.current[key] = s
-        setStops(s)
-      })
-      .catch(() => setError('NO ROUTE DATA'))
-  }, [routeId, direction])
+    setStops([]); setError(false)
+    if (cacheRef.current[routeId]) { setStops(cacheRef.current[routeId]); return }
+    const ctrl = new AbortController()
+    fetch(`/api/routes/${routeId}/stops?direction=1`, { signal: ctrl.signal })
+      .then(r => r.ok ? r.json() : Promise.reject())
+      .then(d => { const s: Stop[] = d.stops ?? []; cacheRef.current[routeId] = s; setStops(s) })
+      .catch(e => { if ((e as Error)?.name !== 'AbortError') setError(true) })
+    return () => ctrl.abort()
+  }, [routeId])
 
-  // Trains at each stop for this route
-  const routePositions = vehiclePositions.filter(vp => vp.route_id === routeId)
+  if (error) return (
+    <div style={{ color: 'var(--text-faint)', fontSize: 10, padding: '8px 0', letterSpacing: '0.08em' }}>
+      NO ROUTE DATA
+    </div>
+  )
+  if (stops.length === 0) return null
 
-  // Map stop_id → list of statuses (multiple trains can be at same stop)
-  const trainsByStop: Record<string, string[]> = {}
-  for (const vp of routePositions) {
-    const base = vp.stop_id.replace(/[NS]$/, '')  // strip N/S suffix for matching
-    if (!trainsByStop[base]) trainsByStop[base] = []
-    trainsByStop[base].push(vp.status)
+  const uptownStops = stops                   // direction=1: south→north (left→right)
+  const downtownStops = [...stops].reverse()  // direction=0: reversed for same geo alignment
+
+  // Separate vehicle maps by direction suffix
+  const uptownMap = new Map<string, VehiclePositionEntry>()
+  const downtownMap = new Map<string, VehiclePositionEntry>()
+  for (const vp of vehiclePositions.filter(v => v.route_id === routeId)) {
+    const base = vp.stop_id.replace(/[NS]$/, '')
+    if (vp.stop_id.endsWith('N')) uptownMap.set(base, vp)
+    else downtownMap.set(base, vp)
   }
 
-  // Is route delayed per lineHealth?
   const health = lineHealth.find(h => h.route_id === routeId)
   const isDelayed = (health?.avg_delay_sec ?? 0) > 60
+  const myBase = myStopId?.replace(/[NS]$/, '')
 
-  // Show every Nth label to avoid crowding
-  function showLabel(i: number, total: number): boolean {
-    if (total <= 8) return true
-    if (total <= 14) return i % 2 === 0
-    return i % 3 === 0
+  const totalWidth = stops.length * (SLOT + CONN)
+
+  function getDotStyle(
+    stop: Stop,
+    vehicleMap: Map<string, VehiclePositionEntry>,
+    i: number,
+  ): { size: number; bg: string; border: string; shadow: string; anim: string; left: number; top: number } {
+    const base = stop.stop_id.replace(/[NS]$/, '')
+    const vp = vehicleMap.get(base)
+    const isMyStop = !!myBase && base === myBase
+    const hasTrain = !!vp
+    const isApproaching = vp?.status === 'IN_TRANSIT_TO' || vp?.status === 'INCOMING_AT'
+
+    const size = hasTrain ? 14 : isMyStop ? 10 : 8
+    const bg = hasTrain ? (isDelayed ? 'var(--amber)' : 'var(--green)') : isMyStop ? 'var(--amber)' : '#1e3a1e'
+    const border = hasTrain
+      ? (isDelayed ? '2px solid var(--amber)' : '2px solid var(--green)')
+      : isMyStop ? '2px solid var(--amber)' : '1px solid #2a5a2a'
+    const shadow = hasTrain
+      ? (isDelayed ? '0 0 8px #f59e0b88' : '0 0 8px #22c55e88')
+      : isMyStop ? '0 0 4px var(--amber)' : 'none'
+    const anim = hasTrain && isApproaching ? 'pulse-glow 1.2s ease-out infinite' : 'none'
+    const left = i * (SLOT + CONN) + (SLOT - size) / 2
+    const top = (20 - size) / 2
+    return { size, bg, border, shadow, anim, left, top }
   }
 
-  function dotStyle(stopId: string): React.CSSProperties {
-    const base = stopId.replace(/[NS]$/, '')
-    const statuses = trainsByStop[base] ?? []
-    const hasTrain = statuses.length > 0
-    const isStopped = statuses.some(s => s === 'STOPPED_AT')
-    const isApproaching = statuses.some(s => s === 'IN_TRANSIT_TO' || s === 'INCOMING_AT')
-
-    if (hasTrain && isDelayed) {
-      return {
-        width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-        background: 'var(--amber)', border: '1px solid var(--amber)',
-        boxShadow: '0 0 6px #f59e0b88', zIndex: 2, position: 'relative',
-      }
-    }
-    if (isStopped) {
-      return {
-        width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-        background: 'var(--green)', border: '1px solid var(--green)',
-        boxShadow: '0 0 6px #22c55e88', zIndex: 2, position: 'relative',
-      }
-    }
-    if (isApproaching) {
-      return {
-        width: 10, height: 10, borderRadius: '50%', flexShrink: 0,
-        background: 'var(--green)', border: '1px solid var(--green)',
-        boxShadow: '0 0 6px #22c55e88', zIndex: 2, position: 'relative',
-        animation: 'pulse-glow 1.2s ease-out infinite',
-      }
-    }
-    return {
-      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-      background: '#1e3a1e', border: '1px solid #2a5a2a', zIndex: 2, position: 'relative',
-    }
-  }
-
-  if (error) {
+  function renderTrack(trackStops: Stop[], vehicleMap: Map<string, VehiclePositionEntry>) {
     return (
-      <div style={{ padding: '12px 0', color: 'var(--text-faint)', fontSize: 10, letterSpacing: '0.08em' }}>
-        {error}
+      <div style={{ position: 'relative', height: 20, width: totalWidth }}>
+        {/* Rail */}
+        <div style={{
+          position: 'absolute', top: 9, left: 0, width: totalWidth, height: 2,
+          background: '#1e3a1e',
+        }} />
+        {trackStops.map((stop, i) => {
+          const { size, bg, border, shadow, anim, left, top } = getDotStyle(stop, vehicleMap, i)
+          return (
+            <div key={stop.stop_id} title={stop.name} style={{
+              position: 'absolute', left, top,
+              width: size, height: size, borderRadius: '50%',
+              background: bg, border, boxShadow: shadow, animation: anim,
+              zIndex: 2,
+            }} />
+          )
+        })}
+      </div>
+    )
+  }
+
+  function renderLabels(trackStops: Stop[]) {
+    // Alternating two rows: even-index at top (y=0), odd-index at bottom (y=14)
+    return (
+      <div style={{ position: 'relative', height: 28, width: totalWidth }}>
+        {trackStops.map((stop, i) => {
+          // Strip after first dash or en-dash to shorten "Times Sq-42 St" → "Times Sq"
+          const raw = stop.name.replace(/[-–].+$/, '').trim()
+          const label = raw.length > 10 ? raw.slice(0, 9) + '…' : raw
+          const centerX = i * (SLOT + CONN) + SLOT / 2
+          const top = i % 2 === 0 ? 0 : 14
+          return (
+            <div key={stop.stop_id} style={{
+              position: 'absolute',
+              left: centerX,
+              top,
+              transform: 'translateX(-50%)',
+              fontSize: 8,
+              color: myBase && stop.stop_id.replace(/[NS]$/, '') === myBase
+                ? 'var(--amber)'
+                : 'var(--text-faint)',
+              whiteSpace: 'nowrap',
+              letterSpacing: '0.01em',
+            }}>
+              {label}
+            </div>
+          )
+        })}
       </div>
     )
   }
 
   return (
-    <div style={{ paddingTop: 10 }}>
-      {/* Direction toggle */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-        {([1, 0] as const).map(d => (
-          <button key={d} onClick={() => setDirection(d)} style={{
-            all: 'unset', cursor: 'pointer',
-            fontSize: 8, letterSpacing: '0.1em', padding: '3px 8px',
-            borderRadius: 2,
-            background: direction === d ? 'var(--green-dim)' : 'transparent',
-            border: `1px solid ${direction === d ? 'var(--green-border)' : 'var(--border)'}`,
-            color: direction === d ? 'var(--green)' : 'var(--text-faint)',
-          }}>
-            {d === 1 ? 'UPTOWN' : 'DOWNTOWN'}
-          </button>
-        ))}
-      </div>
-
-      {/* Track row */}
-      {stops.length === 0 ? (
-        <div style={{ color: 'var(--text-faint)', fontSize: 10 }}>NO POSITION DATA</div>
-      ) : (
-        <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
-          <div style={{ display: 'flex', alignItems: 'center', minWidth: 'max-content', padding: '16px 4px 28px' }}>
-            {stops.map((stop, i) => {
-              const base = stop.stop_id.replace(/[NS]$/, '')
-              const count = trainsByStop[base]?.length ?? 0
-              const label = showLabel(i, stops.length)
-
-              return (
-                <div key={stop.stop_id} style={{ display: 'flex', alignItems: 'center' }}>
-                  {/* Stop dot + label */}
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
-                    {/* Train count badge */}
-                    {count > 1 && (
-                      <div style={{
-                        position: 'absolute', top: -14,
-                        fontSize: 8, color: 'var(--green)', fontWeight: 700, whiteSpace: 'nowrap',
-                      }}>
-                        ▲{count}
-                      </div>
-                    )}
-                    {count === 1 && (
-                      <div style={{
-                        position: 'absolute', top: -14,
-                        fontSize: 8, color: 'var(--green)', fontWeight: 700,
-                      }}>
-                        ▲
-                      </div>
-                    )}
-
-                    {/* Dot */}
-                    <div title={stop.name} style={dotStyle(stop.stop_id)} />
-
-                    {/* Label */}
-                    {label && (
-                      <div style={{
-                        position: 'absolute', top: 14,
-                        fontSize: 7, color: 'var(--text-faint)', whiteSpace: 'nowrap',
-                        transform: 'translateX(-50%)', left: '50%',
-                        maxWidth: 48, overflow: 'hidden', textOverflow: 'ellipsis',
-                      }}>
-                        {stop.name.split('–')[0].split('-')[0].trim()}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Connector segment (not after last stop) */}
-                  {i < stops.length - 1 && (
-                    <div style={{ width: 28, height: 2, background: '#1e3a1e', flexShrink: 0 }} />
-                  )}
-                </div>
-              )
-            })}
-          </div>
+    <div style={{ paddingTop: 12, overflowX: 'auto' }}>
+      <div style={{ width: totalWidth, padding: '0 4px 4px' }}>
+        <div style={{ fontSize: 9, color: 'var(--text-faint)', letterSpacing: '0.1em', marginBottom: 4 }}>
+          ↑ UPTOWN
         </div>
-      )}
+        {renderTrack(uptownStops, uptownMap)}
+        {renderLabels(uptownStops)}
+        {renderTrack(downtownStops, downtownMap)}
+        <div style={{ fontSize: 9, color: 'var(--text-faint)', letterSpacing: '0.1em', marginTop: 4 }}>
+          ↓ DOWNTOWN
+        </div>
+      </div>
     </div>
   )
 }

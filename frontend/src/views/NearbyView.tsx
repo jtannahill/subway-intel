@@ -56,7 +56,7 @@ export function NearbyView({ liveData }: Props) {
     (selectedRoute !== null && routeIds.includes(selectedRoute))
       ? selectedRoute
       : (routeIds[0] ?? null)
-  const noArrivals = stopArrivals.length === 0
+  const noArrivals = sortedRoutes.length === 0
 
   // ── idle ───────────────────────────────────────────────────────────────────
   if (state.status === 'idle') {

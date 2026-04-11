@@ -5,7 +5,6 @@ import { SmartCommute } from './SmartCommute'
 import { StationSearchInput } from '../components/StationSearchInput'
 import type { LiveData } from '../hooks/useLiveData'
 import type { SavedStation } from '../hooks/useStations'
-import { useMediaQuery } from '../hooks/useMediaQuery'
 
 interface Props {
   liveData: LiveData
@@ -15,7 +14,6 @@ interface Props {
 export function MyStations({ liveData, stationsCtx }: Props) {
   const { stations, addStation, removeStation } = stationsCtx
   const [showSearch, setShowSearch] = useState(false)
-  const isMobile = useMediaQuery('(max-width: 768px)')
 
   function addStop(stop_id: string, name: string) {
     // Direction hardcoded to 'N' — direction selection UI is out of scope for this feature
@@ -24,13 +22,7 @@ export function MyStations({ liveData, stationsCtx }: Props) {
   }
 
   return (
-    <div style={{
-      gridColumn: '1 / -1',
-      display: 'grid',
-      gridTemplateColumns: isMobile ? '1fr' : '1fr 1fr',
-      gap: 16,
-      alignItems: 'start',
-    }}>
+    <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, alignItems: 'start' }}>
 
       {/* LEFT: Station list */}
       <div>

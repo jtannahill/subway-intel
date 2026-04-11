@@ -1,36 +1,106 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { ArrivalEntry } from '../hooks/useLiveData'
 import type { SavedStation } from '../hooks/useStations'
 import { LineBadge } from './LineBadge'
 import { DelayBadge } from './DelayBadge'
 import { directionLabel } from '../constants/stops'
+import { useNow } from '../hooks/useNow'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 
 interface Props {
   station: SavedStation
   arrivals: ArrivalEntry[]
   onRemove: () => void
   lastUpdate?: Date | null
+  corrections: Record<string, number>
 }
 
-function minutesUntil(isoTime: string): number {
-  return Math.max(0, Math.round((new Date(isoTime).getTime() - Date.now()) / 60000))
+/** Apply learned per-route correction to a scheduled arrival ISO string.
+ *  Returns a new ISO string shifted by correction_sec. */
+function applyCorrection(isoTime: string, correctionSec: number): string {
+  const ms = new Date(isoTime).getTime() + correctionSec * 1000
+  return new Date(ms).toISOString()
 }
 
-export function ArrivalCard({ station, arrivals, onRemove, lastUpdate }: Props) {
+export function formatCountdown(isoTime: string, now: number): string {
+  const ms = new Date(isoTime).getTime() - now
+  if (ms <= 0) return 'NOW'
+  const totalSec = Math.round(ms / 1000)
+  const m = Math.floor(totalSec / 60)
+  const s = totalSec % 60
+  if (m === 0) return `:${String(s).padStart(2, '0')}`
+  return `${m}:${String(s).padStart(2, '0')}`
+}
+
+function submitFeedback(stopId: string, routeId: string, scheduledArrival: string, trainPresent: boolean) {
+  fetch('/api/feedback/arrival', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      stop_id: stopId,
+      route_id: routeId,
+      scheduled_arrival: scheduledArrival,
+      train_present: trainPresent,
+    }),
+  }).catch(() => {/* fire and forget */})
+}
+
+// Per-arrival feedback state: 'pending' = showing prompt, 'done' = answered or timed out
+type FeedbackStatus = 'pending' | 'done'
+
+export function ArrivalCard({ station, arrivals, onRemove, lastUpdate, corrections }: Props) {
+  const now = useNow()
+  const isMobile = useMediaQuery('(max-width: 640px)')
   const tilesRef = useRef<(HTMLDivElement | null)[]>([])
+  // keyed by arrival_time ISO
+  const [feedbackMap, setFeedbackMap] = useState<Record<string, FeedbackStatus>>({})
+  const dismissTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+
   const firstDelay = arrivals[0]?.delay_sec ?? 0
   const hasDelay = firstDelay > 30
   const isDisrupted = firstDelay > 300
+
+  // Trigger feedback prompt when a tile hits NOW
+  useEffect(() => {
+    for (const a of arrivals.slice(0, 3)) {
+      const corrected = applyCorrection(a.arrival_time, corrections[a.route_id] ?? 0)
+      const ms = new Date(corrected).getTime() - now
+      if (ms <= 0 && !feedbackMap[a.arrival_time]) {
+        setFeedbackMap(prev => ({ ...prev, [a.arrival_time]: 'pending' }))
+        // Auto-dismiss after 30s if unanswered
+        dismissTimers.current[a.arrival_time] = setTimeout(() => {
+          setFeedbackMap(prev =>
+            prev[a.arrival_time] === 'pending'
+              ? { ...prev, [a.arrival_time]: 'done' }
+              : prev
+          )
+        }, 30_000)
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [now])
+
+  // Clear timers on unmount
+  useEffect(() => {
+    const timers = dismissTimers.current
+    return () => { Object.values(timers).forEach(clearTimeout) }
+  }, [])
 
   useEffect(() => {
     if (!lastUpdate) return
     tilesRef.current.forEach(el => {
       if (!el) return
       el.classList.remove('pulse', 'pulse-amber')
-      void el.offsetWidth // reflow
+      void el.offsetWidth
       el.classList.add(hasDelay ? 'pulse-amber' : 'pulse')
     })
   }, [lastUpdate, hasDelay])
+
+  function answerFeedback(arrival: ArrivalEntry, present: boolean) {
+    clearTimeout(dismissTimers.current[arrival.arrival_time])
+    setFeedbackMap(prev => ({ ...prev, [arrival.arrival_time]: 'done' }))
+    submitFeedback(station.stop_id, arrival.route_id, arrival.arrival_time, present)
+  }
 
   return (
     <div className={`card ${hasDelay ? (isDisrupted ? 'card-disrupted' : 'card-delayed') : ''}`}
@@ -59,8 +129,10 @@ export function ArrivalCard({ station, arrivals, onRemove, lastUpdate }: Props) 
           <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>NO SERVICE DATA</div>
         ) : (
           arrivals.slice(0, 3).map((a, i) => {
-            const mins = minutesUntil(a.arrival_time)
+            const corrected = applyCorrection(a.arrival_time, corrections[a.route_id] ?? 0)
+            const countdown = formatCountdown(corrected, now)
             const isNext = i === 0
+            const fbStatus = feedbackMap[a.arrival_time]
             return (
               <div
                 key={a.arrival_time}
@@ -69,17 +141,51 @@ export function ArrivalCard({ station, arrivals, onRemove, lastUpdate }: Props) 
                   background: isNext ? (hasDelay ? 'var(--amber-dim)' : 'var(--green-dim)') : 'var(--bg)',
                   border: `1px solid ${isNext ? (hasDelay ? 'var(--amber-border)' : 'var(--green-border)') : 'var(--border)'}`,
                   borderRadius: 3,
-                  padding: '8px 14px',
+                  padding: isMobile ? '12px 14px' : '8px 10px',
                   textAlign: 'center',
-                  minWidth: 52,
+                  minWidth: isMobile ? 64 : 52,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
                 }}
               >
-                <div className="mono-lg" style={{
+                <LineBadge routeId={a.route_id} size={14} />
+                <div style={{
+                  fontSize: countdown === 'NOW' ? 16 : 18,
+                  fontWeight: 700,
+                  fontFamily: 'inherit',
                   color: isNext ? (hasDelay ? 'var(--amber)' : 'var(--green)') : 'var(--text-muted)',
+                  letterSpacing: '-0.02em',
                 }}>
-                  {mins}
+                  {countdown}
                 </div>
-                <div className="mono-sm">MIN</div>
+                {/* Feedback prompt */}
+                {countdown === 'NOW' && fbStatus === 'pending' && (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                    <span style={{ fontSize: 8, letterSpacing: '0.08em', color: 'var(--text-faint)' }}>HERE?</span>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <button
+                        onClick={() => answerFeedback(a, true)}
+                        style={{
+                          all: 'unset', cursor: 'pointer',
+                          fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+                          padding: '2px 6px', borderRadius: 2,
+                          background: 'var(--green-dim)', border: '1px solid var(--green-border)',
+                          color: 'var(--green)',
+                        }}>Y</button>
+                      <button
+                        onClick={() => answerFeedback(a, false)}
+                        style={{
+                          all: 'unset', cursor: 'pointer',
+                          fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+                          padding: '2px 6px', borderRadius: 2,
+                          background: 'var(--red-dim)', border: '1px solid var(--red-border)',
+                          color: 'var(--red)',
+                        }}>N</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })

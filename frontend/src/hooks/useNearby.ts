@@ -68,9 +68,9 @@ export function useNearby(): { state: NearbyStatus; start: () => void } {
     fetch(`/api/stops/nearest?lat=${lat}&lon=${lon}&limit=1`, { signal: abortRef.current.signal })
       .then((res) => {
         if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json() as Promise<NearbyStation[]>
+        return res.json() as Promise<{ results: NearbyStation[] }>
       })
-      .then((results: NearbyStation[]) => {
+      .then(({ results }) => {
         if (results.length === 0) {
           setState({ status: 'error', message: 'No stations found nearby.' })
         } else {
@@ -99,11 +99,14 @@ export function useNearby(): { state: NearbyStatus; start: () => void } {
     })
   }, [onSuccess, onError])
 
+  // Auto-start on mount — no button tap required
   useEffect(() => {
+    start()
     return () => {
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current)
       abortRef.current?.abort()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return { state, start }

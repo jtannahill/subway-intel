@@ -3,12 +3,14 @@ import os
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+from pydantic import BaseModel
 
 from backend.api.websocket import manager
 from backend.gtfs import state as live_state_module
 from backend.gtfs.static import get_parent_stops_by_name, get_route_stops, get_stop_name, get_travel_sec, nearest_stops, search_stops
 from backend.heuristics.commute import compute_departure
 from backend.heuristics.delay import compute_delay_signals
+from backend.heuristics.feedback import get_corrections, record_feedback
 
 router = APIRouter()
 _state = None  # injected at startup via set_state()
@@ -125,6 +127,29 @@ async def get_route_stops_endpoint(route_id: str, direction: int = 1):
     if not stops:
         raise HTTPException(404, f'No stop sequence for route {route_id} direction {direction}')
     return {'route_id': route_id, 'direction': direction, 'stops': stops}
+
+
+class ArrivalFeedbackBody(BaseModel):
+    stop_id: str
+    route_id: str
+    scheduled_arrival: str
+    train_present: bool
+
+
+@router.post('/api/feedback/arrival')
+async def post_arrival_feedback(body: ArrivalFeedbackBody):
+    record_feedback(
+        stop_id=body.stop_id,
+        route_id=body.route_id,
+        scheduled_arrival=body.scheduled_arrival,
+        train_present=body.train_present,
+    )
+    return {'ok': True}
+
+
+@router.get('/api/feedback/corrections')
+async def get_arrival_corrections():
+    return {'corrections': get_corrections()}
 
 
 @router.websocket('/ws')

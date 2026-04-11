@@ -1,10 +1,11 @@
 import { useState } from 'react'
 import type { LiveData, LineHealthEntry } from '../hooks/useLiveData'
+import type { NearbyStation } from '../hooks/useNearby'
 import { LineBadge } from '../components/LineBadge'
 import { TrackDiagram } from '../components/TrackDiagram'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 
-interface Props { liveData: LiveData }
+interface Props { liveData: LiveData; nearbyStation: NearbyStation | null }
 
 const STATUS_COLORS = {
   NOMINAL:   { text: 'var(--green)', bg: 'var(--green-dim)', border: 'var(--green-border)' },
@@ -38,7 +39,7 @@ type SortKey = 'delay' | 'variance' | 'trend' | 'alerts'
 
 const STATUS_ORDER = { DISRUPTED: 2, DELAYED: 1, NOMINAL: 0 }
 
-export function NetworkPulse({ liveData }: Props) {
+export function NetworkPulse({ liveData, nearbyStation }: Props) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDesc, setSortDesc] = useState(true)
@@ -222,6 +223,7 @@ export function NetworkPulse({ liveData }: Props) {
                     routeId={routes[0]}
                     vehiclePositions={liveData.vehiclePositions}
                     lineHealth={liveData.lineHealth}
+                    myStopId={nearbyStation?.stop_id}
                   />
                 </div>
               )}

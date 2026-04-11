@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import type { LiveData } from '../hooks/useLiveData'
+import { useMediaQuery } from '../hooks/useMediaQuery'
 
 type View = 'stations' | 'nearby' | 'pulse' | 'intel'
 
@@ -18,6 +19,7 @@ const NAV: { id: View; label: string }[] = [
 
 export function TopBar({ active, onNav, liveData }: Props) {
   const [elapsedSec, setElapsedSec] = useState(0)
+  const isMobile = useMediaQuery('(max-width: 640px)')
 
   useEffect(() => {
     if (!liveData.lastUpdate) return
@@ -35,9 +37,11 @@ export function TopBar({ active, onNav, liveData }: Props) {
       borderBottom: '1px solid var(--border-dim)',
       display: 'flex',
       alignItems: 'center',
-      padding: '0 20px',
+      padding: '0 16px',
       gap: 24,
       flexShrink: 0,
+      paddingLeft: 'max(16px, env(safe-area-inset-left))',
+      paddingRight: 'max(16px, env(safe-area-inset-right))',
       zIndex: 10,
     }}>
       {/* Wordmark */}
@@ -45,36 +49,38 @@ export function TopBar({ active, onNav, liveData }: Props) {
         SUBWAY-INTEL
       </span>
 
-      {/* Nav tabs */}
-      <div style={{ display: 'flex', gap: 4 }}>
-        {NAV.map(({ id, label }) => (
-          <button
-            key={id}
-            onClick={() => onNav(id)}
-            style={{
-              all: 'unset',
-              cursor: 'pointer',
-              padding: '6px 14px',
-              fontSize: 10,
-              letterSpacing: '0.07em',
-              borderRadius: 3,
-              color: active === id ? 'var(--text-primary)' : 'var(--text-faint)',
-              background: active === id ? '#1a1a1a' : 'transparent',
-              border: active === id ? '1px solid var(--border)' : '1px solid transparent',
-              transition: 'color 0.1s',
-            }}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      {/* Nav tabs — desktop only */}
+      {!isMobile && (
+        <div style={{ display: 'flex', gap: 4 }}>
+          {NAV.map(({ id, label }) => (
+            <button
+              key={id}
+              onClick={() => onNav(id)}
+              style={{
+                all: 'unset',
+                cursor: 'pointer',
+                padding: '6px 14px',
+                fontSize: 10,
+                letterSpacing: '0.07em',
+                borderRadius: 3,
+                color: active === id ? 'var(--text-primary)' : 'var(--text-faint)',
+                background: active === id ? '#1a1a1a' : 'transparent',
+                border: active === id ? '1px solid var(--border)' : '1px solid transparent',
+                transition: 'color 0.1s',
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* LIVE pill */}
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6 }}>
         <div className={`dot ${liveData.connected ? 'dot-green' : 'dot-dim'}`} />
         <span style={{ color: 'var(--text-faint)', fontSize: 10, letterSpacing: '0.05em' }}>
           {liveData.connected
-            ? `LIVE · ${elapsedSec}s ago`
+            ? (isMobile ? 'LIVE' : `LIVE · ${elapsedSec}s ago`)
             : 'CONNECTING'}
         </span>
       </div>

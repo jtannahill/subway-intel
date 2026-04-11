@@ -29,10 +29,11 @@ body {
   font-size: 15px;
   -webkit-font-smoothing: antialiased;
   height: 100vh;
+  height: 100dvh; /* accounts for iOS Safari address bar */
   overflow: hidden;
 }
 
-#root { height: 100vh; display: flex; flex-direction: column; }
+#root { height: 100vh; height: 100dvh; display: flex; flex-direction: column; }
 
 /* Scrollbar */
 ::-webkit-scrollbar { width: 4px; }

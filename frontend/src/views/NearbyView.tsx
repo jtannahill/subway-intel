@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import type { LiveData, ArrivalEntry } from '../hooks/useLiveData'
 import { useNearby } from '../hooks/useNearby'
 import { LineBadge } from '../components/LineBadge'
@@ -27,8 +27,9 @@ export function NearbyView({ liveData }: Props) {
   const now = Date.now()
   const routeMap = new Map<string, { minUntil: number; entry: ArrivalEntry }>()
   for (const entry of stopArrivals) {
-    const minUntil = Math.round((new Date(entry.arrival_time).getTime() - now) / 60000)
-    if (minUntil < 0) continue
+    const ms = new Date(entry.arrival_time).getTime() - now
+    if (ms < 0) continue                          // exact past filter — use raw ms
+    const minUntil = Math.round(ms / 60000)
     const existing = routeMap.get(entry.route_id)
     if (!existing || minUntil < existing.minUntil) {
       routeMap.set(entry.route_id, { minUntil, entry })
@@ -37,12 +38,23 @@ export function NearbyView({ liveData }: Props) {
 
   const sortedRoutes = [...routeMap.entries()].sort((a, b) => a[1].minUntil - b[1].minUntil)
 
-  const routeIds =
-    routeMap.size > 0
-      ? sortedRoutes.map(([rid]) => rid)
-      : liveData.lineHealth.map(h => h.route_id)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const routeIds = useMemo(
+    () =>
+      routeMap.size > 0
+        ? [...routeMap.entries()]
+            .sort((a, b) => a[1].minUntil - b[1].minUntil)
+            .map(([rid]) => rid)
+        : liveData.lineHealth.map(h => h.route_id),
+    // routeMap is recreated every render, so use .size as a stable proxy
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [routeMap.size, liveData.lineHealth],
+  )
 
-  const activeRoute = selectedRoute ?? routeIds[0] ?? null
+  const activeRoute =
+    (selectedRoute !== null && routeIds.includes(selectedRoute))
+      ? selectedRoute
+      : (routeIds[0] ?? null)
   const noArrivals = stopArrivals.length === 0
 
   // ── idle ───────────────────────────────────────────────────────────────────

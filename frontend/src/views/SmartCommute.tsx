@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { LineBadge } from '../components/LineBadge'
 import { StationSearchInput } from '../components/StationSearchInput'
 import type { LiveData } from '../hooks/useLiveData'
 import type { SavedStation } from '../hooks/useStations'
@@ -28,7 +29,6 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
-  void liveData
   void stationsCtx
 
   async function calculate() {
@@ -36,7 +36,7 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
     setLoading(true); setError(''); setOptions([])
     try {
       const res = await fetch(`/api/commute?origin=${origin}&destination=${dest}`)
-      if (!res.ok) { setError('No route found between these stops.'); return }
+      if (!res.ok) { setError('No direct route found. Try nearby stations.'); return }
       const data = await res.json()
       setOptions(data.options ?? [])
     } catch { setError('Network error — is the backend running?') }
@@ -104,11 +104,13 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
                   </div>
                   <div style={{ width: 1, height: 40, background: 'var(--border)' }} />
                   <div style={{ flex: 1 }}>
-                    <div style={{ color: 'var(--text-primary)', fontSize: 14, marginBottom: 4 }}>
-                      <span style={{ fontWeight: 700 }}>{opt.route_id}</span>
-                      {' train · board '}<span style={{ color: 'var(--green)' }}>{fmt(opt.board_at)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                      <LineBadge routeId={opt.route_id} size={20} />
+                      <span style={{ color: 'var(--text-primary)', fontSize: 14 }}>
+                        {'board '}<span style={{ color: 'var(--green)' }}>{fmt(opt.board_at)}</span>
+                      </span>
                       {opt.delay_sec > 30 && (
-                        <span style={{ color: 'var(--amber)', fontSize: 12 }}> +{Math.round(opt.delay_sec / 60)}m delay</span>
+                        <span style={{ color: 'var(--amber)', fontSize: 12 }}>+{Math.round(opt.delay_sec / 60)}m delay</span>
                       )}
                     </div>
                     <div style={{ color: 'var(--text-muted)', fontSize: 13 }}>
@@ -121,6 +123,50 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
           })}
         </div>
       )}
+
+      {options.length > 0 && (() => {
+        const routeIds = [...new Set(options.map(o => o.route_id))]
+        const statuses = routeIds
+          .map(rid => liveData.lineHealth.find(h => h.route_id === rid))
+          .filter((h): h is NonNullable<typeof h> => !!h)
+        if (statuses.length === 0) return null
+
+        const disrupted = statuses.find(h => h.status === 'DISRUPTED')
+        const delayed = statuses.find(h => h.status === 'DELAYED')
+        const worst = disrupted ?? delayed
+
+        return (
+          <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {worst && (
+              <div style={{
+                padding: '8px 12px', borderRadius: 3,
+                background: 'var(--amber-dim)', border: '1px solid var(--amber-border)',
+                color: 'var(--amber)', fontSize: 11, letterSpacing: '0.04em',
+              }}>
+                ⚠ Route affected — {worst.route_id} is {worst.status.toLowerCase()}
+                {worst.alerts.length > 0 && ` · ${worst.alerts.length} alert${worst.alerts.length > 1 ? 's' : ''}`}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {statuses.map(h => {
+                const color = h.status === 'DISRUPTED' ? 'var(--red)' : h.status === 'DELAYED' ? 'var(--amber)' : 'var(--green)'
+                const bg = h.status === 'DISRUPTED' ? 'var(--red-dim)' : h.status === 'DELAYED' ? 'var(--amber-dim)' : 'var(--green-dim)'
+                const border = h.status === 'DISRUPTED' ? 'var(--red-border)' : h.status === 'DELAYED' ? 'var(--amber-border)' : 'var(--green-border)'
+                return (
+                  <div key={h.route_id} style={{
+                    display: 'flex', alignItems: 'center', gap: 6,
+                    padding: '4px 8px', borderRadius: 2,
+                    background: bg, border: `1px solid ${border}`,
+                  }}>
+                    <LineBadge routeId={h.route_id} size={14} />
+                    <span style={{ color, fontSize: 9, letterSpacing: '0.06em' }}>{h.status}</span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )
+      })()}
     </div>
   )
 }

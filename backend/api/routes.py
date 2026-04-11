@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
 
 from backend.api.websocket import manager
 from backend.gtfs import state as live_state_module
-from backend.gtfs.static import get_route_stops, get_travel_sec, nearest_stops, search_stops
+from backend.gtfs.static import get_parent_stops_by_name, get_route_stops, get_stop_name, get_travel_sec, nearest_stops, search_stops
 from backend.heuristics.commute import compute_departure
 from backend.heuristics.delay import compute_delay_signals
 
@@ -42,13 +42,39 @@ async def get_arrivals(stop_id: str):
 async def get_commute(origin: str, destination: str):
     if _state is None:
         raise HTTPException(503, 'State not ready')
-    arrivals = _state.get_arrivals(origin, limit=3)
-    if not arrivals:
-        raise HTTPException(404, f'No upcoming trains at {origin}')
-    travel_sec = get_travel_sec(origin, destination)
-    if travel_sec is None:
-        raise HTTPException(404, f'No route found from {origin} to {destination}')
-    return {'options': [compute_departure(next_arrival=a, travel_sec=travel_sec) for a in arrivals]}
+
+    # Expand origin and destination to all parent stops sharing the same station name.
+    # This handles multi-line stations (e.g. "Times Sq-42 St" has 4 distinct parent
+    # stops for different train groups — 127=1/2/3, 725=7, 902=S, R16=N/Q/R/W).
+    origin_base = origin.rstrip('NS')
+    dest_base = destination.rstrip('NS')
+    origin_name = get_stop_name(origin_base) or get_stop_name(origin)
+    dest_name = get_stop_name(dest_base) or get_stop_name(destination)
+    origin_parents = get_parent_stops_by_name(origin_name) or [origin_base]
+    dest_parents = get_parent_stops_by_name(dest_name) or [dest_base]
+
+    # Try all (origin_dir, dest_dir) combinations to find a working route.
+    best_arrivals = None
+    best_travel_sec = None
+    for o_parent in origin_parents:
+        for direction in ('N', 'S'):
+            o_stop = o_parent + direction
+            arrivals = _state.get_arrivals(o_stop, limit=3)
+            if not arrivals:
+                continue
+            for d_parent in dest_parents:
+                for d_dir in ('N', 'S'):
+                    d_stop = d_parent + d_dir
+                    travel_sec = get_travel_sec(o_stop, d_stop)
+                    if travel_sec is not None:
+                        if best_travel_sec is None or travel_sec < best_travel_sec:
+                            best_arrivals = arrivals
+                            best_travel_sec = travel_sec
+
+    if best_arrivals is None or best_travel_sec is None:
+        raise HTTPException(404, f'No route found from {origin_name} to {dest_name}')
+
+    return {'options': [compute_departure(next_arrival=a, travel_sec=best_travel_sec) for a in best_arrivals]}
 
 
 @router.get('/api/network')

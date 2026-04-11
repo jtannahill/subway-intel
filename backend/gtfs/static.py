@@ -155,6 +155,17 @@ def get_travel_sec(origin_stop_id: str, dest_stop_id: str) -> Optional[int]:
     return _travel_times.get((origin_stop_id, dest_stop_id))
 
 
+def get_parent_stops_by_name(name: str) -> list[str]:
+    """Return all parent stop_ids (no N/S suffix) whose name matches exactly.
+    Used by the commute endpoint to try all physical stops at a named station
+    (e.g. 'Times Sq-42 St' has 4 distinct parent stops for different lines).
+    """
+    return [
+        sid for sid, info in _stops.items()
+        if info['name'] == name and not sid.endswith(('N', 'S'))
+    ]
+
+
 def search_stops(query: str, limit: int = 10) -> list[dict]:
     """Search stops by name, deduplicated — one result per station name.
     Prefers the parent stop_id (no N/S suffix) over directional variants.

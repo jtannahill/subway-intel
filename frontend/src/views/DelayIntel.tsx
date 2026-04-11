@@ -41,7 +41,7 @@ export function DelayIntel({ liveData }: Props) {
         Heuristic signals derived from live GTFS-RT feed · 15-min rolling window
       </div>
 
-      <div style={{ overflowX: isMobile ? 'auto' : 'visible' }}>
+      <div style={{ overflowX: 'auto' }}>
         {/* Table header */}
         <div style={{
           display: 'grid', gridTemplateColumns: '40px 1fr 90px 90px 80px 60px',

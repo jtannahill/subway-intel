@@ -8,6 +8,21 @@ interface Props {
   defaultValue?: string
 }
 
+const NYC_QUICK_PICKS: { label: string; lat: number; lon: number }[] = [
+  { label: 'Times Square',         lat: 40.7580, lon: -73.9855 },
+  { label: 'Grand Central',        lat: 40.7527, lon: -73.9772 },
+  { label: 'Penn Station',         lat: 40.7505, lon: -73.9934 },
+  { label: 'World Trade Center',   lat: 40.7126, lon: -74.0099 },
+  { label: 'Union Square',         lat: 40.7359, lon: -73.9911 },
+  { label: 'Columbus Circle',      lat: 40.7682, lon: -73.9820 },
+  { label: 'Rockefeller Center',   lat: 40.7587, lon: -73.9787 },
+  { label: 'Brooklyn Bridge',      lat: 40.7061, lon: -73.9969 },
+  { label: 'Yankee Stadium',       lat: 40.8296, lon: -73.9262 },
+  { label: 'Flushing / Main St',   lat: 40.7574, lon: -73.8330 },
+  { label: 'JFK Airport',          lat: 40.6413, lon: -73.7781 },
+  { label: 'LaGuardia Airport',    lat: 40.7769, lon: -73.8740 },
+]
+
 type Item =
   | { type: 'station'; data: StationResult }
   | { type: 'address'; data: AddressResult }
@@ -37,7 +52,8 @@ export function StationSearchInput({
     ...addresses.map(a => ({ type: 'address' as const, data: a })),
   ]
   const hasResults = items.length > 0
-  const showDropdown = open && query.length >= 2
+  const showQuickPicks = open && query.length < 2
+  const showDropdown = open && (query.length >= 2 || showQuickPicks)
 
   function selectStation(s: StationResult) {
     setQuery(s.name)
@@ -90,11 +106,13 @@ export function StationSearchInput({
     )
   }
 
+  const dropdownOpen = showDropdown && (hasResults || showQuickPicks)
+
   const inputStyle: React.CSSProperties = {
     all: 'unset', display: 'block', width: '100%',
     background: 'var(--bg-surface)',
-    border: `1px solid ${showDropdown && hasResults ? 'var(--green-border)' : 'var(--border)'}`,
-    borderRadius: showDropdown && hasResults ? '3px 3px 0 0' : 3,
+    border: `1px solid ${dropdownOpen ? 'var(--green-border)' : 'var(--border)'}`,
+    borderRadius: dropdownOpen ? '3px 3px 0 0' : 3,
     padding: '8px 12px',
     color: 'var(--text-primary)', fontSize: 12,
     transition: 'border-color 0.1s',
@@ -117,6 +135,10 @@ export function StationSearchInput({
         onKeyDown={handleKey}
         placeholder={placeholder}
         style={inputStyle}
+        autoComplete="off"
+        autoCorrect="off"
+        autoCapitalize="none"
+        spellCheck={false}
       />
 
       {showDropdown && (
@@ -125,9 +147,47 @@ export function StationSearchInput({
           background: 'var(--bg-surface)',
           border: '1px solid var(--green-border)', borderTop: 'none',
           borderRadius: '0 0 3px 3px',
-          maxHeight: 280, overflowY: 'auto',
+          maxHeight: 'min(280px, 40vh)', overflowY: 'auto',
           boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+          WebkitOverflowScrolling: 'touch',
         }}>
+          {showQuickPicks && (
+            <>
+              <div style={sectionHeaderStyle}>NYC QUICK SEARCH</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, padding: '10px' }}>
+                {NYC_QUICK_PICKS.map(pick => (
+                  <button
+                    key={pick.label}
+                    onMouseDown={e => {
+                      e.preventDefault()
+                      selectAddress({ place_name: pick.label, lat: pick.lat, lon: pick.lon })
+                    }}
+                    onTouchEnd={e => {
+                      e.preventDefault()
+                      selectAddress({ place_name: pick.label, lat: pick.lat, lon: pick.lon })
+                    }}
+                    style={{
+                      all: 'unset', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center',
+                      minHeight: 32,
+                      padding: '0 10px',
+                      fontSize: 11, letterSpacing: '0.04em',
+                      color: 'var(--text-muted)',
+                      background: 'var(--bg-elevated)',
+                      border: '1px solid var(--border)',
+                      borderRadius: 3,
+                      whiteSpace: 'nowrap',
+                      WebkitTapHighlightColor: 'transparent',
+                      touchAction: 'manipulation',
+                    }}
+                  >
+                    {pick.label}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
           {stations.length > 0 && (
             <>
               <div style={sectionHeaderStyle}>STATIONS</div>
@@ -173,14 +233,14 @@ export function StationSearchInput({
                       boxSizing: 'border-box',
                     }}
                   >
-                    📍 {a.place_name}
+                    {a.place_name}
                   </button>
                 )
               })}
             </>
           )}
 
-          {!hasResults && (
+          {!hasResults && !showQuickPicks && (
             <div style={{ padding: '10px 12px', fontSize: 11, color: 'var(--text-faint)' }}>
               No results for "{query}"
             </div>

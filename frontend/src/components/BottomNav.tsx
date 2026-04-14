@@ -1,4 +1,4 @@
-type View = 'stations' | 'nearby' | 'pulse' | 'intel'
+type View = 'stations' | 'nearby' | 'pulse' | 'intel' | 'map' | 'plan'
 
 interface Props {
   active: View
@@ -10,6 +10,8 @@ const ITEMS: { id: View; icon: string; label: string }[] = [
   { id: 'nearby',   icon: '◎', label: 'NEARBY'   },
   { id: 'pulse',    icon: '≋', label: 'PULSE'     },
   { id: 'intel',    icon: '⚡', label: 'INTEL'     },
+  { id: 'map',      icon: '⬡', label: 'MAP'       },
+  { id: 'plan',     icon: '⇄', label: 'PLAN'      },
 ]
 
 export function BottomNav({ active, onNav }: Props) {

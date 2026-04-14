@@ -18,6 +18,12 @@ interface CommuteOption {
   delay_sec: number
 }
 
+interface TransferInfo {
+  at: string
+  leg1_min: number
+  leg2_min: number
+}
+
 function fmt(isoTime: string): string {
   return new Date(isoTime).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
 }
@@ -26,6 +32,7 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
   const [origin, setOrigin] = useState('')
   const [dest, setDest] = useState('')
   const [options, setOptions] = useState<CommuteOption[]>([])
+  const [transfer, setTransfer] = useState<TransferInfo | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
 
@@ -33,12 +40,13 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
 
   async function calculate() {
     if (!origin || !dest) { setError('Select both origin and destination.'); return }
-    setLoading(true); setError(''); setOptions([])
+    setLoading(true); setError(''); setOptions([]); setTransfer(null)
     try {
       const res = await fetch(`/api/commute?origin=${origin}&destination=${dest}`)
-      if (!res.ok) { setError('No direct route found. Try nearby stations.'); return }
+      if (!res.ok) { setError('No route found. Try different stations.'); return }
       const data = await res.json()
       setOptions(data.options ?? [])
+      setTransfer(data.transfer ?? null)
     } catch { setError('Network error — is the backend running?') }
     finally { setLoading(false) }
   }
@@ -74,6 +82,25 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
 
       {error && <div style={{ color: 'var(--red)', fontSize: 13, marginTop: 12 }}>{error}</div>}
 
+      {transfer && (
+        <div style={{
+          marginTop: 16, padding: '10px 14px', borderRadius: 3,
+          background: 'var(--bg-surface)', border: '1px solid var(--border)',
+          fontSize: 11, color: 'var(--text-muted)',
+          display: 'flex', flexDirection: 'column', gap: 4,
+        }}>
+          <div style={{ color: 'var(--amber)', fontSize: 10, letterSpacing: '0.06em' }}>
+            ⇄ 1 TRANSFER REQUIRED
+          </div>
+          <div>
+            Transfer at <span style={{ color: 'var(--text-primary)' }}>{transfer.at}</span>
+          </div>
+          <div style={{ color: 'var(--text-faint)', fontSize: 10 }}>
+            {transfer.leg1_min} min to transfer station · {transfer.leg2_min} min to destination
+          </div>
+        </div>
+      )}
+
       {options.length > 0 && (
         <div style={{ marginTop: 24 }}>
           <div className="label" style={{ marginBottom: 12 }}>DEPARTURES</div>
@@ -90,8 +117,13 @@ export function SmartCommute({ liveData, stationsCtx }: Props) {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
                   <div style={{ minWidth: 80, textAlign: 'center' }}>
                     {isNow ? (
-                      <div style={{ color: 'var(--amber)', fontSize: 13, fontWeight: 700, letterSpacing: '0.08em' }}>
-                        LEAVE NOW
+                      <div style={{ textAlign: 'center' }}>
+                        <div style={{ color: 'var(--amber)', fontSize: 13, fontWeight: 700, letterSpacing: '0.08em' }}>
+                          LEAVE NOW
+                        </div>
+                        <div style={{ color: 'var(--text-faint)', fontSize: 9, letterSpacing: '0.06em', marginTop: 2 }}>
+                          TRAIN BOARDS &lt;1 MIN
+                        </div>
                       </div>
                     ) : (
                       <>

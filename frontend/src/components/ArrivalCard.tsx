@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ArrivalEntry } from '../hooks/useLiveData'
+import type { ArrivalEntry, LineHealthEntry } from '../hooks/useLiveData'
 import type { SavedStation } from '../hooks/useStations'
 import { LineBadge } from './LineBadge'
 import { DelayBadge } from './DelayBadge'
@@ -13,6 +13,8 @@ interface Props {
   onRemove: () => void
   lastUpdate?: Date | null
   corrections: Record<string, number>
+  lineHealth?: LineHealthEntry[]
+  walkMin?: number
 }
 
 /** Apply learned per-route correction to a scheduled arrival ISO string.
@@ -48,7 +50,14 @@ function submitFeedback(stopId: string, routeId: string, scheduledArrival: strin
 // Per-arrival feedback state: 'pending' = showing prompt, 'done' = answered or timed out
 type FeedbackStatus = 'pending' | 'done'
 
-export function ArrivalCard({ station, arrivals, onRemove, lastUpdate, corrections }: Props) {
+/** Returns true when a route's current headway is >1.8× scheduled (trains bunching). */
+function isCrowded(routeId: string, lineHealth: LineHealthEntry[]): boolean {
+  const h = lineHealth.find(e => e.route_id === routeId)
+  if (!h || h.current_headway_sec == null || h.scheduled_headway_sec == null) return false
+  return h.current_headway_sec > 1.8 * h.scheduled_headway_sec
+}
+
+export function ArrivalCard({ station, arrivals, onRemove, lastUpdate, corrections, lineHealth = [], walkMin }: Props) {
   const now = useNow()
   const isMobile = useMediaQuery('(max-width: 640px)')
   const tilesRef = useRef<(HTMLDivElement | null)[]>([])
@@ -124,72 +133,95 @@ export function ArrivalCard({ station, arrivals, onRemove, lastUpdate, correctio
       </div>
 
       {/* Countdown tiles */}
-      <div style={{ display: 'flex', gap: 8 }}>
-        {arrivals.length === 0 ? (
-          <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>NO SERVICE DATA</div>
-        ) : (
-          arrivals.slice(0, 3).map((a, i) => {
-            const corrected = applyCorrection(a.arrival_time, corrections[a.route_id] ?? 0)
-            const countdown = formatCountdown(corrected, now)
-            const isNext = i === 0
-            const fbStatus = feedbackMap[a.arrival_time]
-            return (
-              <div
-                key={a.arrival_time}
-                ref={el => { tilesRef.current[i] = el }}
-                style={{
-                  background: isNext ? (hasDelay ? 'var(--amber-dim)' : 'var(--green-dim)') : 'var(--bg)',
-                  border: `1px solid ${isNext ? (hasDelay ? 'var(--amber-border)' : 'var(--green-border)') : 'var(--border)'}`,
-                  borderRadius: 3,
-                  padding: isMobile ? '12px 14px' : '8px 10px',
-                  textAlign: 'center',
-                  minWidth: isMobile ? 64 : 52,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: 4,
-                }}
-              >
-                <LineBadge routeId={a.route_id} size={14} />
-                <div style={{
-                  fontSize: countdown === 'NOW' ? 16 : 18,
-                  fontWeight: 700,
-                  fontFamily: 'inherit',
-                  color: isNext ? (hasDelay ? 'var(--amber)' : 'var(--green)') : 'var(--text-muted)',
-                  letterSpacing: '-0.02em',
-                }}>
-                  {countdown}
-                </div>
-                {/* Feedback prompt */}
-                {countdown === 'NOW' && fbStatus === 'pending' && (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: 2 }}>
-                    <span style={{ fontSize: 8, letterSpacing: '0.08em', color: 'var(--text-faint)' }}>HERE?</span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <button
-                        onClick={() => answerFeedback(a, true)}
-                        style={{
-                          all: 'unset', cursor: 'pointer',
-                          fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
-                          padding: '2px 6px', borderRadius: 2,
-                          background: 'var(--green-dim)', border: '1px solid var(--green-border)',
-                          color: 'var(--green)',
-                        }}>Y</button>
-                      <button
-                        onClick={() => answerFeedback(a, false)}
-                        style={{
-                          all: 'unset', cursor: 'pointer',
-                          fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
-                          padding: '2px 6px', borderRadius: 2,
-                          background: 'var(--red-dim)', border: '1px solid var(--red-border)',
-                          color: 'var(--red)',
-                        }}>N</button>
-                    </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {arrivals.length === 0 ? (
+            <div style={{ color: 'var(--text-muted)', fontSize: 11 }}>NO SERVICE DATA</div>
+          ) : (
+            arrivals.slice(0, 3).map((a, i) => {
+              const corrected = applyCorrection(a.arrival_time, corrections[a.route_id] ?? 0)
+              const countdown = formatCountdown(corrected, now)
+              const isNext = i === 0
+              const fbStatus = feedbackMap[a.arrival_time]
+              const crowded = isNext && isCrowded(a.route_id, lineHealth)
+              return (
+                <div
+                  key={a.arrival_time}
+                  ref={el => { tilesRef.current[i] = el }}
+                  style={{
+                    background: isNext ? (hasDelay ? 'var(--amber-dim)' : 'var(--green-dim)') : 'var(--bg)',
+                    border: `1px solid ${isNext ? (hasDelay ? 'var(--amber-border)' : 'var(--green-border)') : 'var(--border)'}`,
+                    borderRadius: 3,
+                    padding: isMobile ? '12px 14px' : '8px 10px',
+                    textAlign: 'center',
+                    minWidth: isMobile ? 64 : 52,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <LineBadge routeId={a.route_id} size={14} />
+                  <div style={{
+                    fontSize: countdown === 'NOW' ? 16 : 18,
+                    fontWeight: 700,
+                    fontFamily: 'inherit',
+                    color: isNext ? (hasDelay ? 'var(--amber)' : 'var(--green)') : 'var(--text-muted)',
+                    letterSpacing: '-0.02em',
+                  }}>
+                    {countdown}
                   </div>
-                )}
-              </div>
-            )
-          })
-        )}
+                  {/* Crowding indicator */}
+                  {crowded && (
+                    <span style={{ fontSize: 8, letterSpacing: '0.08em', color: 'var(--amber)', lineHeight: 1 }}>
+                      LIKELY CROWDED
+                    </span>
+                  )}
+                  {/* Feedback prompt */}
+                  {countdown === 'NOW' && fbStatus === 'pending' && (
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, marginTop: 2 }}>
+                      <span style={{ fontSize: 8, letterSpacing: '0.08em', color: 'var(--text-faint)' }}>HERE?</span>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <button
+                          onClick={() => answerFeedback(a, true)}
+                          style={{
+                            all: 'unset', cursor: 'pointer',
+                            fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+                            padding: '2px 6px', borderRadius: 2,
+                            background: 'var(--green-dim)', border: '1px solid var(--green-border)',
+                            color: 'var(--green)',
+                          }}>Y</button>
+                        <button
+                          onClick={() => answerFeedback(a, false)}
+                          style={{
+                            all: 'unset', cursor: 'pointer',
+                            fontSize: 9, fontWeight: 700, letterSpacing: '0.05em',
+                            padding: '2px 6px', borderRadius: 2,
+                            background: 'var(--red-dim)', border: '1px solid var(--red-border)',
+                            color: 'var(--red)',
+                          }}>N</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })
+          )}
+        </div>
+
+        {/* Departure timer — only when walkMin is provided and there are arrivals */}
+        {walkMin != null && arrivals.length > 0 && (() => {
+          const corrected = applyCorrection(arrivals[0].arrival_time, corrections[arrivals[0].route_id] ?? 0)
+          const msUntil = new Date(corrected).getTime() - now
+          const leaveInMs = msUntil - walkMin * 60_000
+          return (
+            <div style={{ fontSize: 8, letterSpacing: '0.08em', lineHeight: 1, color: leaveInMs <= 0 ? 'var(--amber)' : 'var(--green)' }}>
+              {leaveInMs <= 0
+                ? 'LEAVE NOW'
+                : `LEAVE IN ${Math.ceil(leaveInMs / 60_000)}m`}
+            </div>
+          )
+        })()}
       </div>
     </div>
   )

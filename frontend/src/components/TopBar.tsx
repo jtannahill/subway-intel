@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import type { LiveData } from '../hooks/useLiveData'
 import { useMediaQuery } from '../hooks/useMediaQuery'
 
-type View = 'stations' | 'nearby' | 'pulse' | 'intel'
+type View = 'stations' | 'nearby' | 'pulse' | 'intel' | 'map' | 'plan'
 
 interface Props {
   active: View
@@ -15,6 +15,8 @@ const NAV: { id: View; label: string }[] = [
   { id: 'nearby',   label: 'NEARBY' },
   { id: 'pulse',    label: 'NETWORK PULSE' },
   { id: 'intel',    label: 'DELAY INTEL' },
+  { id: 'map',      label: 'LIVE MAP' },
+  { id: 'plan',     label: 'PLAN' },
 ]
 
 export function TopBar({ active, onNav, liveData }: Props) {
@@ -80,7 +82,7 @@ export function TopBar({ active, onNav, liveData }: Props) {
         <div className={`dot ${liveData.connected ? 'dot-green' : 'dot-dim'}`} />
         <span style={{ color: 'var(--text-faint)', fontSize: 10, letterSpacing: '0.05em' }}>
           {liveData.connected
-            ? (isMobile ? 'LIVE' : `LIVE · ${elapsedSec}s ago`)
+            ? `LIVE · ${elapsedSec}s`
             : 'CONNECTING'}
         </span>
       </div>

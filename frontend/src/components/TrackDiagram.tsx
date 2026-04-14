@@ -10,13 +10,31 @@ interface Props {
   myStopId?: string
 }
 
-const SLOT = 16  // px: width of each stop's "column"
-const CONN = 20  // px: width of the connector rail between stops
+const SLOT = 16   // px: width of each stop's "column"
+const CONN = 20   // px: width of the connector rail between stops
+const TRAIN_SIZE = 12  // px: diameter of moving train dot
+const RAIL_Y = 9       // px: vertical center of the rail
+
+/** Convert a GTFS-RT status + stop index into an interpolated X pixel position. */
+function interpolateTrainX(
+  status: VehiclePositionEntry['status'],
+  targetIdx: number,
+): number {
+  const targetX = targetIdx * (SLOT + CONN) + SLOT / 2
+  const prevX = targetIdx > 0 ? (targetIdx - 1) * (SLOT + CONN) + SLOT / 2 : targetX
+  switch (status) {
+    case 'STOPPED_AT':   return targetX
+    case 'INCOMING_AT':  return prevX + (targetX - prevX) * 0.80
+    case 'IN_TRANSIT_TO': return prevX + (targetX - prevX) * 0.20
+    default:             return targetX
+  }
+}
 
 export function TrackDiagram({ routeId, vehiclePositions, lineHealth, myStopId }: Props) {
   const [stops, setStops] = useState<Stop[]>([])
   const [error, setError] = useState(false)
   const cacheRef = useRef<Record<string, Stop[]>>({})
+  const containerRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     setStops([]); setError(false)
@@ -29,6 +47,18 @@ export function TrackDiagram({ routeId, vehiclePositions, lineHealth, myStopId }
     return () => ctrl.abort()
   }, [routeId])
 
+  // Compute myX before early returns so the auto-scroll useEffect is always called
+  const myBase = myStopId?.replace(/[NS]$/, '')
+  const uptownIndexMap = new Map(stops.map((s, i) => [s.stop_id.replace(/[NS]$/, ''), i]))
+  const myIndex = myBase ? uptownIndexMap.get(myBase) ?? -1 : -1
+  const myX = myIndex >= 0 ? myIndex * (SLOT + CONN) + SLOT / 2 : -1
+
+  // Auto-scroll to center "you are here" when stops load — must be before early returns
+  useEffect(() => {
+    if (myX < 0 || !containerRef.current) return
+    containerRef.current.scrollLeft = myX - containerRef.current.clientWidth / 2
+  }, [myX])
+
   if (error) return (
     <div style={{ color: 'var(--text-faint)', fontSize: 10, padding: '8px 0', letterSpacing: '0.08em' }}>
       NO ROUTE DATA
@@ -36,84 +66,35 @@ export function TrackDiagram({ routeId, vehiclePositions, lineHealth, myStopId }
   )
   if (stops.length === 0) return null
 
-  const uptownStops = stops                   // direction=1: south→north (left→right)
-  const downtownStops = [...stops].reverse()  // direction=0: reversed for same geo alignment
-
-  // Separate vehicle maps by direction suffix
-  const uptownMap = new Map<string, VehiclePositionEntry>()
-  const downtownMap = new Map<string, VehiclePositionEntry>()
-  for (const vp of vehiclePositions.filter(v => v.route_id === routeId)) {
-    const base = vp.stop_id.replace(/[NS]$/, '')
-    if (vp.stop_id.endsWith('N')) uptownMap.set(base, vp)
-    else downtownMap.set(base, vp)
-  }
+  const uptownStops = stops
+  const downtownStops = [...stops].reverse()
 
   const health = lineHealth.find(h => h.route_id === routeId)
   const isDelayed = (health?.avg_delay_sec ?? 0) > 60
-  const myBase = myStopId?.replace(/[NS]$/, '')
+  const trainColor = isDelayed ? 'var(--amber)' : 'var(--green)'
+  const trainShadow = isDelayed ? '0 0 8px #f59e0b88' : '0 0 8px #22c55e88'
+  const trainBorder = isDelayed ? '2px solid var(--amber)' : '2px solid var(--green)'
+  const trainApproachAnim = isDelayed ? 'pulse-glow-amber 1.2s ease-out infinite' : 'pulse-glow 1.2s ease-out infinite'
 
   const totalWidth = stops.length * SLOT + Math.max(0, stops.length - 1) * CONN
 
-  function getDotStyle(
-    stop: Stop,
-    vehicleMap: Map<string, VehiclePositionEntry>,
-    i: number,
-  ): { size: number; bg: string; border: string; shadow: string; anim: string; left: number; top: number } {
-    const base = stop.stop_id.replace(/[NS]$/, '')
-    const vp = vehicleMap.get(base)
-    const isMyStop = !!myBase && base === myBase
-    const hasTrain = !!vp
-    const isApproaching = vp?.status === 'IN_TRANSIT_TO' || vp?.status === 'INCOMING_AT'
+  // Index maps: base_stop_id → position in each direction's array (uptownIndexMap already computed above)
+  const downtownIndexMap = new Map(downtownStops.map((s, i) => [s.stop_id.replace(/[NS]$/, ''), i]))
 
-    const size = hasTrain ? 14 : isMyStop ? 10 : 8
-    const bg = hasTrain ? (isDelayed ? 'var(--amber)' : 'var(--green)') : isMyStop ? 'var(--amber)' : '#1e3a1e'
-    const border = hasTrain
-      ? (isDelayed ? '2px solid var(--amber)' : '2px solid var(--green)')
-      : isMyStop ? '2px solid var(--amber)' : '1px solid #2a5a2a'
-    const shadow = hasTrain
-      ? (isDelayed ? '0 0 8px #f59e0b88' : '0 0 8px #22c55e88')
-      : isMyStop ? '0 0 4px var(--amber)' : 'none'
-    const anim = hasTrain && isApproaching
-      ? (isDelayed ? 'pulse-glow-amber 1.2s ease-out infinite' : 'pulse-glow 1.2s ease-out infinite')
-      : 'none'
-    const left = i * (SLOT + CONN) + (SLOT - size) / 2
-    const top = (20 - size) / 2
-    return { size, bg, border, shadow, anim, left, top }
-  }
-
-  function renderTrack(trackStops: Stop[], vehicleMap: Map<string, VehiclePositionEntry>) {
-    return (
-      <div style={{ position: 'relative', height: 20, width: totalWidth }}>
-        {/* Rail */}
-        <div style={{
-          position: 'absolute', top: 9, left: 0, width: totalWidth, height: 2,
-          background: '#1e3a1e',
-        }} />
-        {trackStops.map((stop, i) => {
-          const { size, bg, border, shadow, anim, left, top } = getDotStyle(stop, vehicleMap, i)
-          return (
-            <div key={stop.stop_id} title={stop.name} style={{
-              position: 'absolute', left, top,
-              width: size, height: size, borderRadius: '50%',
-              background: bg, border, boxShadow: shadow, animation: anim,
-              zIndex: 2,
-            }} />
-          )
-        })}
-      </div>
-    )
-  }
+  // Split vehicles by direction suffix
+  const routeVehicles = vehiclePositions.filter(v => v.route_id === routeId)
+  const uptownVehicles = routeVehicles.filter(v => v.stop_id.endsWith('N'))
+  const downtownVehicles = routeVehicles.filter(v => v.stop_id.endsWith('S'))
 
   function renderLabels(trackStops: Stop[]) {
-    // Alternating two rows: even-index at top (y=0), odd-index at bottom (y=14)
     return (
       <div style={{ position: 'relative', height: 28, width: totalWidth }}>
         {trackStops.map((stop, i) => {
-          // Strip after first dash or en-dash to shorten "Times Sq-42 St" → "Times Sq"
           const raw = stop.name.replace(/[-–].+$/, '').trim()
           const label = raw.length > 10 ? raw.slice(0, 9) + '…' : raw
           const centerX = i * (SLOT + CONN) + SLOT / 2
           const top = i % 2 === 0 ? 0 : 14
+          const isMyStop = myBase && stop.stop_id.replace(/[NS]$/, '') === myBase
           return (
             <div key={stop.stop_id} style={{
               position: 'absolute',
@@ -121,9 +102,8 @@ export function TrackDiagram({ routeId, vehiclePositions, lineHealth, myStopId }
               top,
               transform: 'translateX(-50%)',
               fontSize: 8,
-              color: myBase && stop.stop_id.replace(/[NS]$/, '') === myBase
-                ? 'var(--amber)'
-                : 'var(--text-faint)',
+              fontWeight: isMyStop ? 700 : 400,
+              color: isMyStop ? 'var(--amber)' : 'var(--text-faint)',
               whiteSpace: 'nowrap',
               letterSpacing: '0.01em',
             }}>
@@ -135,18 +115,95 @@ export function TrackDiagram({ routeId, vehiclePositions, lineHealth, myStopId }
     )
   }
 
+  /** Overlay station dots and floating train dots in the same coordinate space. */
+  function renderTrack(
+    trackStops: Stop[],
+    vehicles: VehiclePositionEntry[],
+    indexMap: Map<string, number>,
+  ) {
+    return (
+      <div style={{ position: 'relative', height: 20, width: totalWidth }}>
+        {/* Rail */}
+        <div style={{
+          position: 'absolute', top: RAIL_Y, left: 0, width: totalWidth, height: 2,
+          background: '#1e3a1e',
+        }} />
+        {/* Station markers */}
+        {trackStops.map((stop, i) => {
+          const base = stop.stop_id.replace(/[NS]$/, '')
+          const isMyStop = !!myBase && base === myBase
+          const dotSize = isMyStop ? 14 : 8
+          const dotLeft = i * (SLOT + CONN) + (SLOT - dotSize) / 2
+          const dotTop = (20 - dotSize) / 2
+          return (
+            <div key={stop.stop_id} title={stop.name} style={{
+              position: 'absolute', left: dotLeft, top: dotTop,
+              width: dotSize, height: dotSize, borderRadius: '50%',
+              background: isMyStop ? 'var(--amber)' : '#1e3a1e',
+              border: isMyStop ? '2px solid #fbbf24' : '1px solid #2a5a2a',
+              boxShadow: isMyStop ? '0 0 10px #f59e0baa, 0 0 20px #f59e0b55' : 'none',
+              animation: isMyStop ? 'pulse-glow-amber 1.4s ease-in-out infinite' : 'none',
+              zIndex: 2,
+            }} />
+          )
+        })}
+        {/* Floating train dots */}
+        {vehicles.map(vp => {
+          const base = vp.stop_id.replace(/[NS]$/, '')
+          const idx = indexMap.get(base)
+          if (idx === undefined) return null
+          const trainX = interpolateTrainX(vp.status, idx)
+          const isApproaching = vp.status === 'IN_TRANSIT_TO' || vp.status === 'INCOMING_AT'
+          return (
+            <div key={vp.trip_id} style={{
+              position: 'absolute',
+              left: trainX - TRAIN_SIZE / 2,
+              top: RAIL_Y - TRAIN_SIZE / 2,
+              width: TRAIN_SIZE,
+              height: TRAIN_SIZE,
+              borderRadius: '50%',
+              background: trainColor,
+              border: trainBorder,
+              boxShadow: trainShadow,
+              animation: isApproaching ? trainApproachAnim : 'none',
+              zIndex: 4,
+              transition: 'left 0.8s ease-in-out',
+              willChange: 'left',
+            }} />
+          )
+        })}
+      </div>
+    )
+  }
+
   return (
-    <div style={{ paddingTop: 12, overflowX: 'auto' }}>
+    <div ref={containerRef} style={{ paddingTop: 8, overflowX: 'auto', width: '100%', minWidth: 0 }}>
       <div style={{ width: totalWidth, padding: '0 4px 4px' }}>
-        <div style={{ fontSize: 9, color: 'var(--text-faint)', letterSpacing: '0.1em', marginBottom: 4 }}>
-          ↑ UPTOWN
+
+        {/* YOU ARE HERE pin */}
+        <div style={{ position: 'relative', height: myX >= 0 ? 34 : 0, width: totalWidth }}>
+          {myX >= 0 && (
+            <div style={{
+              position: 'absolute', left: myX,
+              transform: 'translateX(-50%)',
+              display: 'flex', flexDirection: 'column', alignItems: 'center',
+              top: 0, gap: 1,
+            }}>
+              <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.12em', color: 'var(--amber)', whiteSpace: 'nowrap' }}>
+                YOU
+              </span>
+              <div style={{ width: 1, height: 12, background: 'var(--amber)', opacity: 0.65 }} />
+              <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '5px solid var(--amber)' }} />
+            </div>
+          )}
         </div>
-        {renderTrack(uptownStops, uptownMap)}
+
+        <div style={{ fontSize: 9, color: 'var(--text-faint)', letterSpacing: '0.1em', marginBottom: 4 }}>↑ UPTOWN</div>
+        {renderTrack(uptownStops, uptownVehicles, uptownIndexMap)}
         {renderLabels(uptownStops)}
-        {renderTrack(downtownStops, downtownMap)}
-        <div style={{ fontSize: 9, color: 'var(--text-faint)', letterSpacing: '0.1em', marginTop: 4 }}>
-          ↓ DOWNTOWN
-        </div>
+        {renderTrack(downtownStops, downtownVehicles, downtownIndexMap)}
+        <div style={{ fontSize: 9, color: 'var(--text-faint)', letterSpacing: '0.1em', marginTop: 4 }}>↓ DOWNTOWN</div>
+
       </div>
     </div>
   )

@@ -2,12 +2,14 @@ from __future__ import annotations
 import os
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, WebSocket, WebSocketDisconnect
+import httpx
+from fastapi import APIRouter, HTTPException, Response, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from backend.api.websocket import manager
+from backend import config
 from backend.gtfs import state as live_state_module
-from backend.gtfs.static import get_parent_stops_by_name, get_route_stops, get_stop_name, get_travel_sec, nearest_stops, search_stops
+from backend.gtfs.static import find_transfer_route, get_all_parent_stops, get_parent_stops_by_name, get_route_stops, get_stop_name, get_tracks_geojson, get_travel_sec, nearest_stops, search_stops
 from backend.heuristics.commute import compute_departure
 from backend.heuristics.delay import compute_delay_signals
 from backend.heuristics.feedback import get_corrections, record_feedback
@@ -19,6 +21,11 @@ _state = None  # injected at startup via set_state()
 def set_state(s) -> None:
     global _state
     _state = s
+
+
+@router.get('/api/config')
+async def get_config():
+    return {'mapbox_token': config.mapbox_token}
 
 
 @router.get('/api/stations/{stop_id}/arrivals')
@@ -73,10 +80,32 @@ async def get_commute(origin: str, destination: str):
                             best_arrivals = arrivals
                             best_travel_sec = travel_sec
 
-    if best_arrivals is None or best_travel_sec is None:
+    if best_arrivals is not None and best_travel_sec is not None:
+        return {
+            'options': [compute_departure(next_arrival=a, travel_sec=best_travel_sec) for a in best_arrivals],
+            'transfer': None,
+        }
+
+    # No direct route — try 1-transfer routing
+    all_origin_stops = [o_parent + d for o_parent in origin_parents for d in ('N', 'S')]
+    all_dest_stops   = [d_parent + d for d_parent in dest_parents   for d in ('N', 'S')]
+    transfer = find_transfer_route(all_origin_stops, all_dest_stops)
+
+    if transfer is None:
         raise HTTPException(404, f'No route found from {origin_name} to {dest_name}')
 
-    return {'options': [compute_departure(next_arrival=a, travel_sec=best_travel_sec) for a in best_arrivals]}
+    arrivals = _state.get_arrivals(transfer['origin_stop'], limit=3)
+    if not arrivals:
+        raise HTTPException(404, f'No live arrivals found at {origin_name}')
+
+    return {
+        'options': [compute_departure(next_arrival=a, travel_sec=transfer['total_sec']) for a in arrivals],
+        'transfer': {
+            'at': transfer['transfer_name'],
+            'leg1_min': round(transfer['leg1_sec'] / 60),
+            'leg2_min': round(transfer['leg2_sec'] / 60),
+        },
+    }
 
 
 @router.get('/api/network')
@@ -119,6 +148,51 @@ async def search_stops_api(q: str, limit: int = 10):
 @router.get('/api/stops/nearest')
 async def get_nearest_stops(lat: float, lon: float, limit: int = 1):
     return {'results': nearest_stops(lat, lon, limit)}
+
+
+@router.get('/api/stops/all')
+async def get_all_stops(response: Response):
+    response.headers['Cache-Control'] = 'public, max-age=3600'
+    return {'stops': get_all_parent_stops()}
+
+
+@router.get('/api/tracks')
+async def get_tracks(response: Response):
+    response.headers['Cache-Control'] = 'public, max-age=3600'
+    return get_tracks_geojson()
+
+
+# Cached in-memory to avoid repeated ArcGIS fetches (dataset is stable)
+_subway_lines_cache: dict | None = None
+
+_ARCGIS_SUBWAY_URL = (
+    'https://services6.arcgis.com/yG5s3afENB5iO9fj/arcgis/rest/services/'
+    'Subway_view/FeatureServer/0/query'
+)
+
+@router.get('/api/subway-lines')
+async def get_subway_lines(response: Response):
+    """NYC DOT subway line physical track geometries from ArcGIS (NYC geo-metadata dataset)."""
+    global _subway_lines_cache
+    if _subway_lines_cache is not None:
+        response.headers['Cache-Control'] = 'public, max-age=86400'
+        return _subway_lines_cache
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            r = await client.get(_ARCGIS_SUBWAY_URL, params={
+                'where': '1=1',
+                'outFields': 'LINE,DIVISION,RAIL_TYPE,ROW_TYPE',
+                'f': 'geojson',
+                'outSR': '4326',
+                'resultRecordCount': '10000',
+            })
+            r.raise_for_status()
+            data = r.json()
+            _subway_lines_cache = data
+            response.headers['Cache-Control'] = 'public, max-age=86400'
+            return data
+    except Exception as exc:
+        raise HTTPException(502, f'Failed to fetch subway lines: {exc}')
 
 
 @router.get('/api/routes/{route_id}/stops')

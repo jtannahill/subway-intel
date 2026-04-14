@@ -4,6 +4,7 @@ import type { NearbyStation } from '../hooks/useNearby'
 import { LineBadge } from '../components/LineBadge'
 import { TrackDiagram } from '../components/TrackDiagram'
 import { useMediaQuery } from '../hooks/useMediaQuery'
+import { useSavedLines } from '../hooks/useSavedLines'
 
 interface Props { liveData: LiveData; nearbyStation: NearbyStation | null }
 
@@ -44,7 +45,13 @@ export function NetworkPulse({ liveData, nearbyStation }: Props) {
   const [sortKey, setSortKey] = useState<SortKey | null>(null)
   const [sortDesc, setSortDesc] = useState(true)
   const isMobile = useMediaQuery('(max-width: 768px)')
+  const { savedLines, toggleLine, hasSaved } = useSavedLines()
   const toggle = (label: string) => setExpanded(v => v === label ? null : label)
+
+  // Feature 3: build set of bunched route_ids for O(1) lookup
+  const bunchedRoutes = new Set<string>(
+    (liveData.bunches ?? []).flatMap(b => [b.route_id])
+  )
 
   function cycleSort(key: SortKey) {
     if (sortKey === key) {
@@ -134,6 +141,38 @@ export function NetworkPulse({ liveData, nearbyStation }: Props) {
 
       {/* RIGHT: Line group accordion */}
       <div>
+        {/* Feature 1: Saved Lines badge row */}
+        {liveData.lineHealth.length > 0 && (
+          <div style={{
+            display: 'flex', overflowX: 'auto', gap: 6, marginBottom: 12,
+            paddingBottom: 4, maxHeight: 32, alignItems: 'center',
+            scrollbarWidth: 'none',
+          }}>
+            {liveData.lineHealth.map(({ route_id }) => {
+              const saved = savedLines.includes(route_id)
+              return (
+                <button
+                  key={route_id}
+                  onClick={() => toggleLine(route_id)}
+                  title={saved ? `Unsave ${route_id}` : `Save ${route_id}`}
+                  style={{
+                    all: 'unset', cursor: 'pointer', flexShrink: 0,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    opacity: saved ? 1 : 0.4,
+                    outline: saved ? '2px solid rgba(255,255,255,0.5)' : 'none',
+                    outlineOffset: 2,
+                    borderRadius: 50,
+                    transition: 'opacity 0.15s',
+                    WebkitTapHighlightColor: 'transparent',
+                  }}
+                >
+                  <LineBadge routeId={route_id} size={22} />
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, marginBottom: 12 }}>
           <span className="label" style={{ fontSize: 14, color: 'var(--text-primary)' }}>LINE GROUPS</span>
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 4 }}>
@@ -159,23 +198,39 @@ export function NetworkPulse({ liveData, nearbyStation }: Props) {
             })}
           </div>
         </div>
-        {(sortKey
-          ? [...LINE_GROUPS].sort((a, b) => {
-              const ha = worstHealth(a.routes, liveData.lineHealth)
-              const hb = worstHealth(b.routes, liveData.lineHealth)
-              let va = 0, vb = 0
-              if (sortKey === 'delay')    { va = ha?.avg_delay_sec ?? 0;   vb = hb?.avg_delay_sec ?? 0 }
-              if (sortKey === 'variance') { va = ha?.headway_variance ?? 0; vb = hb?.headway_variance ?? 0 }
-              if (sortKey === 'trend')    { va = STATUS_ORDER[ha?.status ?? 'NOMINAL']; vb = STATUS_ORDER[hb?.status ?? 'NOMINAL'] }
-              if (sortKey === 'alerts')   { va = ha?.alerts.length ?? 0;    vb = hb?.alerts.length ?? 0 }
-              return sortDesc ? vb - va : va - vb
+        {(() => {
+          // Base ordering: sort key takes precedence; saved-first is secondary tiebreaker
+          let groups = sortKey
+            ? [...LINE_GROUPS].sort((a, b) => {
+                const ha = worstHealth(a.routes, liveData.lineHealth)
+                const hb = worstHealth(b.routes, liveData.lineHealth)
+                let va = 0, vb = 0
+                if (sortKey === 'delay')    { va = ha?.avg_delay_sec ?? 0;    vb = hb?.avg_delay_sec ?? 0 }
+                if (sortKey === 'variance') { va = ha?.headway_variance ?? 0;  vb = hb?.headway_variance ?? 0 }
+                if (sortKey === 'trend')    { va = STATUS_ORDER[ha?.status ?? 'NOMINAL']; vb = STATUS_ORDER[hb?.status ?? 'NOMINAL'] }
+                if (sortKey === 'alerts')   { va = ha?.alerts.length ?? 0;     vb = hb?.alerts.length ?? 0 }
+                return sortDesc ? vb - va : va - vb
+              })
+            : [...LINE_GROUPS]
+
+          // Feature 1: when no sort key, saved lines float to top
+          if (hasSaved && !sortKey) {
+            groups = groups.sort((a, b) => {
+              const aSaved = a.routes.some(r => savedLines.includes(r)) ? 0 : 1
+              const bSaved = b.routes.some(r => savedLines.includes(r)) ? 0 : 1
+              return aSaved - bSaved
             })
-          : LINE_GROUPS
-        ).map(({ label, routes }) => {
+          }
+
+          return groups
+        })().map(({ label, routes }) => {
           const h = worstHealth(routes, liveData.lineHealth)
           const status = h?.status ?? 'NOMINAL'
           const colors = STATUS_COLORS[status]
           const isExpanded = expanded === label
+
+          // Feature 3: does any route in this group have a bunching event?
+          const hasBunch = routes.some(r => bunchedRoutes.has(r))
 
           return (
             <div key={label} style={{ marginBottom: 4 }}>
@@ -189,12 +244,23 @@ export function NetworkPulse({ liveData, nearbyStation }: Props) {
                   {routes.map(r => <LineBadge key={r} routeId={r} size={16} />)}
                 </div>
                 <span style={{ color: 'var(--text-muted)', fontSize: 9, letterSpacing: '0.06em' }}>{label}</span>
-                <div style={{
-                  marginLeft: 'auto', background: colors.bg,
-                  border: `1px solid ${colors.border}`, borderRadius: 2,
-                  padding: '2px 7px', fontSize: 9, color: colors.text,
-                }}>
-                  {status}
+                <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {/* Feature 3: BUNCH badge */}
+                  {hasBunch && (
+                    <span style={{
+                      background: 'var(--amber-dim)', border: '1px solid var(--amber-border)',
+                      color: 'var(--amber)', borderRadius: 2,
+                      padding: '2px 5px', fontSize: 8, letterSpacing: '0.09em',
+                    }}>
+                      BUNCH
+                    </span>
+                  )}
+                  <div style={{
+                    background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 2,
+                    padding: '2px 7px', fontSize: 9, color: colors.text,
+                  }}>
+                    {status}
+                  </div>
                 </div>
                 <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>{isExpanded ? '▲' : '▼'}</span>
               </button>
@@ -212,6 +278,25 @@ export function NetworkPulse({ liveData, nearbyStation }: Props) {
                             <div key={i} style={{ color: 'var(--amber)', fontSize: 11, marginBottom: 4 }}>⚠ {a}</div>
                           ))
                       }
+                      {/* Feature 2: Headway row */}
+                      {h.current_headway_sec != null && h.scheduled_headway_sec != null && (() => {
+                        const actual = Math.round(h.current_headway_sec! / 60)
+                        const scheduled = Math.round(h.scheduled_headway_sec! / 60)
+                        const ratio = h.current_headway_sec! / (h.scheduled_headway_sec! || 1)
+                        const hwColor = ratio <= 1.5
+                          ? 'var(--green)'
+                          : ratio <= 2.5
+                            ? 'var(--amber)'
+                            : 'var(--red)'
+                        return (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6 }}>
+                            <span style={{ color: 'var(--text-faint)', fontSize: 9, letterSpacing: '0.09em' }}>HEADWAY</span>
+                            <span style={{ color: hwColor, fontSize: 10 }}>{actual}m actual</span>
+                            <span style={{ color: 'var(--text-faint)', fontSize: 10 }}>/</span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{scheduled}m scheduled</span>
+                          </div>
+                        )
+                      })()}
                       <div style={{ color: 'var(--text-faint)', fontSize: 10, marginTop: 8 }}>
                         Avg delay: {Math.round(h.avg_delay_sec)}s · HW variance: {Math.round(h.headway_variance)}s
                       </div>

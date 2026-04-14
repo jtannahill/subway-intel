@@ -1,12 +1,20 @@
 from __future__ import annotations
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import httpx
 from google.transit import gtfs_realtime_pb2
 
 from backend.gtfs.models import ArrivalRecord, ServiceAlert, VehiclePosition
+from backend.gtfs.static import get_scheduled_arrival_sec
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:
+    from backports.zoneinfo import ZoneInfo  # type: ignore
+
+_NYC_TZ = ZoneInfo('America/New_York')
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +65,7 @@ def parse_feed(data: bytes) -> list[ArrivalRecord]:
         tu = entity.trip_update
         route_id = tu.trip.route_id
         trip_id = tu.trip.trip_id
+        start_date = tu.trip.start_date  # e.g. '20260413'
 
         for stu in tu.stop_time_update:
             if not stu.HasField('arrival'):
@@ -64,13 +73,31 @@ def parse_feed(data: bytes) -> list[ArrivalRecord]:
             stop_id = stu.stop_id
             direction = stop_id[-1] if stop_id and stop_id[-1] in ('N', 'S') else 'N'
             arrival_time = datetime.fromtimestamp(stu.arrival.time, tz=timezone.utc)
-            delay_sec = stu.arrival.delay if stu.arrival.HasField('delay') else 0
+
+            # MTA rarely populates arrival.delay; compute it from scheduled time instead.
+            delay_sec = 0
+            sched_sec = get_scheduled_arrival_sec(trip_id, stop_id)
+            if sched_sec is not None and start_date and len(start_date) == 8:
+                try:
+                    svc_day = datetime.strptime(start_date, '%Y%m%d').replace(tzinfo=_NYC_TZ)
+                    # Service midnight in UTC (handles DST automatically)
+                    svc_midnight_utc = svc_day.astimezone(timezone.utc).replace(
+                        hour=0, minute=0, second=0, microsecond=0
+                    )
+                    scheduled_utc = svc_midnight_utc + timedelta(seconds=sched_sec)
+                    computed = int((arrival_time - scheduled_utc).total_seconds())
+                    # Clamp: ignore implausible values (> 2h late or > 30min early)
+                    if -1800 <= computed <= 7200:
+                        delay_sec = max(0, computed)
+                except Exception:
+                    pass
+
             records.append(ArrivalRecord(
                 route_id=route_id,
                 trip_id=trip_id,
                 stop_id=stop_id,
                 arrival_time=arrival_time,
-                delay_sec=int(delay_sec),
+                delay_sec=delay_sec,
                 direction=direction,
             ))
     return records
@@ -147,14 +174,47 @@ def parse_alerts_json(data: bytes) -> list[ServiceAlert]:
                 if t.get('language', '') == 'en':
                     break
 
-        # Effect — integer enum or string name
-        raw_effect = alert_obj.get('effect', 8)  # 8 = UNKNOWN_EFFECT
-        if isinstance(raw_effect, int):
-            effect = _EFFECT_NAMES.get(raw_effect, 'UNKNOWN_EFFECT')
-        else:
-            effect = str(raw_effect)
+        # MTA uses Mercury extension for alert type — standard 'effect' field is absent.
+        mercury = alert_obj.get('transit_realtime.mercury_alert', {})
+        alert_type = mercury.get('alert_type', '')
 
-        severity = 'HIGH' if effect in ('NO_SERVICE', 'REDUCED_SERVICE') else 'LOW'
+        # Also check standard effect field as a fallback
+        raw_effect = alert_obj.get('effect', None)
+        if raw_effect is not None:
+            if isinstance(raw_effect, int):
+                std_effect = _EFFECT_NAMES.get(raw_effect, 'UNKNOWN_EFFECT')
+            else:
+                std_effect = str(raw_effect)
+        else:
+            std_effect = 'UNKNOWN_EFFECT'
+
+        # Mercury alert_type → normalized effect + severity
+        # Covers all currently observed types from the MTA feed.
+        _MERCURY_MAP: dict[str, tuple[str, str]] = {
+            # Live disruptions
+            'Delays':                    ('SIGNIFICANT_DELAYS', 'MEDIUM'),
+            'Reduced Service':           ('REDUCED_SERVICE',    'HIGH'),
+            'No Service':                ('NO_SERVICE',         'HIGH'),
+            'Suspended Service':         ('NO_SERVICE',         'HIGH'),
+            'No Scheduled Service':      ('NO_SERVICE',         'HIGH'),
+            # Planned service changes (significant — trains not serving all stops/routes)
+            'Planned - Suspended':       ('NO_SERVICE',         'HIGH'),
+            'Planned - Part Suspended':  ('REDUCED_SERVICE',    'HIGH'),
+            'Planned - Stops Skipped':   ('MODIFIED_SERVICE',   'MEDIUM'),
+            'Stops Skipped':             ('MODIFIED_SERVICE',   'MEDIUM'),
+            'Planned - Reroute':         ('MODIFIED_SERVICE',   'MEDIUM'),
+            'Planned - Express to Local':('MODIFIED_SERVICE',   'MEDIUM'),
+            'Express to Local':          ('MODIFIED_SERVICE',   'MEDIUM'),
+            'Special Schedule':          ('MODIFIED_SERVICE',   'LOW'),
+            # Informational only — no status change
+            'Boarding Change':           ('OTHER_EFFECT',       'LOW'),
+            'Extra Service':             ('OTHER_EFFECT',       'LOW'),
+            'Station Notice':            ('OTHER_EFFECT',       'LOW'),
+        }
+        effect, severity = _MERCURY_MAP.get(
+            alert_type,
+            (std_effect, 'HIGH' if std_effect in ('NO_SERVICE', 'REDUCED_SERVICE') else 'LOW'),
+        )
 
         if not routes and header:
             routes = ['ALL']
@@ -200,12 +260,29 @@ def parse_vehicle_positions(data: bytes) -> list[VehiclePosition]:
     return positions
 
 
-async def fetch_feed(url: str, client: httpx.AsyncClient) -> bytes:
-    """Fetch a single GTFS-RT feed URL. Returns empty bytes on failure."""
+async def fetch_feed(
+    url: str,
+    client: httpx.AsyncClient,
+    etag: str | None = None,
+) -> tuple[bytes | None, str | None]:
+    """Fetch a single GTFS-RT feed URL with ETag caching.
+
+    Returns:
+        (content, etag)  — new data received; etag may be None if server doesn't send one
+        (None,   etag)   — 304 Not Modified; caller should reuse cached data
+        (b'',    None)   — fetch or parse error
+    """
+    headers = {}
+    if etag:
+        headers['If-None-Match'] = etag
+
     try:
-        resp = await client.get(url, timeout=10.0)
+        resp = await client.get(url, headers=headers, timeout=10.0)
+        if resp.status_code == 304:
+            return None, etag
         resp.raise_for_status()
-        return resp.content
+        new_etag = resp.headers.get('etag') or resp.headers.get('ETag')
+        return resp.content, new_etag
     except Exception as e:
         logger.warning('Feed fetch failed for %s: %s', url, e)
-        return b''
+        return b'', None

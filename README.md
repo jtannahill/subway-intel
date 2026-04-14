@@ -20,19 +20,24 @@ Real-time NYC subway intelligence. Live train positions, countdowns, delay detec
 
 **Track Diagram** — scrollable horizontal diagram per route showing uptown and downtown tracks, live train positions (interpolated by GTFS-RT status), and a YOU ARE HERE marker anchored to your station.
 
+**Map View** — full-screen Mapbox GL JS map with live vehicle position markers, stop pins for all lines, and real-time updates via WebSocket.
+
+**Plan View** — trip planning UI for querying routes between any two NYC stops.
+
 **Mobile + iOS PWA** — bottom navigation bar, 100dvh layout with safe-area insets, larger touch targets. Add to Home Screen on iOS for a full-screen app experience.
 
 ## Architecture
 
 ```
-MTA GTFS-Realtime feed (protobuf)
+MTA GTFS-Realtime feed (protobuf) + camsys alerts JSON
           │
           ▼
     Python / FastAPI (EC2 t3.small)
-    ├── GTFS-RT parser
-    ├── In-memory live state
+    ├── GTFS-RT parser (trips, vehicles, alerts)
+    ├── In-memory live state (LiveState)
     ├── WebSocket broadcast → browsers
-    ├── REST API (arrivals, stops, nearest, routes, alerts)
+    ├── REST API (arrivals, stops, nearest, routes, alerts, vehicles)
+    ├── config.py (Mapbox token via Secrets Manager or .env)
     └── TimescaleDB writer
           │
           ▼
@@ -42,7 +47,7 @@ MTA GTFS-Realtime feed (protobuf)
     └── continuous aggregates (5m / 1h / 1d rollups)
           │
           ▼
-    React 19 + Vite (served via nginx on same EC2)
+    React 19 + Vite + Mapbox GL JS (served via FastAPI on same EC2)
 ```
 
 ## Stack
@@ -53,7 +58,7 @@ MTA GTFS-Realtime feed (protobuf)
 | Backend | Python, FastAPI, WebSockets |
 | Database | TimescaleDB (Postgres) |
 | Infrastructure | EC2 t3.small, Cloudflare SSL/DNS |
-| Frontend | React 19, TypeScript, Vite |
+| Frontend | React 19, TypeScript, Vite, Mapbox GL JS |
 
 ## Roadmap
 
@@ -70,10 +75,14 @@ MTA GTFS-Realtime feed (protobuf)
 - [x] Uptown/Downtown direction picker on save
 - [x] Mobile-first layout + iOS PWA mode
 - [x] TimescaleDB historical accumulation
+- [x] Map View — live vehicle positions on Mapbox GL JS
+- [x] Plan View — trip planning UI
+- [x] OG image + full social/iMessage meta tags
 
 **Phase 2 — ML layer**
 - [ ] Delay prediction model (trained on accumulated history)
 - [ ] Anomaly detection
+- [ ] Trip planner backend (route graph + transfer logic)
 - [ ] iOS app
 
 ## Getting Started
@@ -83,7 +92,7 @@ You'll need an MTA API key from [api.mta.info](https://api.mta.info).
 ```bash
 git clone https://github.com/jtannahill/subway-intel
 cd subway-intel
-cp .env.example .env  # add your MTA API key
+cp .env.example .env  # add your MTA API key and Mapbox token
 ```
 
 Backend:

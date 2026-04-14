@@ -6,9 +6,11 @@ Real-time NYC subway intelligence. Live train positions, countdowns, delay detec
 
 ## Features
 
-**Nearby** — tap Use My Location or search any station or NYC address. Shows the 3 nearest stations with distance in miles and blocks. Select any to see live arrivals, route badges, and a full track diagram with moving train dots.
+**Nearby** — auto-detects your location on arrival. Search any station or NYC address as an alternative. Shows the 3 nearest stations with distance in miles and blocks. Select any to see live arrivals with route badges and a full track diagram anchored to your position.
 
-**My Stations** — save stops in either direction (uptown / downtown / both). Arrivals update live every second with wall-clock-synced countdown timers. Paired N+S stops render under a shared station header.
+**My Stations** — choose uptown, downtown, or both directions before saving. Arrivals count down in m:ss format, ticking every second, with a route badge on each tile. Paired N+S stops render under a shared station header.
+
+**Arrival Feedback Loop** — a HERE? prompt appears when a train is due NOW. Y/N responses are logged and used to compute per-route timing bias, which is applied as a correction to all displayed countdowns.
 
 **Smart Commute** — enter your destination, get a "leave in X minutes" recommendation based on live train positions and current delays.
 
@@ -17,6 +19,8 @@ Real-time NYC subway intelligence. Live train positions, countdowns, delay detec
 **Delay Intelligence** — heuristic delay scoring derived from live trip data. Surfaces delays before the MTA announces them.
 
 **Track Diagram** — scrollable horizontal diagram per route showing uptown and downtown tracks, live train positions (interpolated by GTFS-RT status), and a YOU ARE HERE marker anchored to your station.
+
+**Mobile + iOS PWA** — bottom navigation bar, 100dvh layout with safe-area insets, larger touch targets. Add to Home Screen on iOS for a full-screen app experience.
 
 ## Architecture
 
@@ -61,7 +65,10 @@ MTA GTFS-Realtime feed (protobuf)
 - [x] Smart Commute calculator
 - [x] Nearby — GPS + address search, 3 nearest stations, mi + blocks
 - [x] Track diagram — live train positions per route
-- [x] Wall-clock-synced countdown timers
+- [x] Live m:ss countdown timers (ticking every second)
+- [x] Arrival feedback loop — HERE? Y/N corrections applied to countdowns
+- [x] Uptown/Downtown direction picker on save
+- [x] Mobile-first layout + iOS PWA mode
 - [x] TimescaleDB historical accumulation
 
 **Phase 2 — ML layer**

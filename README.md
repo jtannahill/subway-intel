@@ -1,5 +1,12 @@
 # subway-intel
 
+![Status](https://img.shields.io/badge/status-active-success)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)
+![Node.js](https://img.shields.io/badge/Node.js-339933?logo=nodedotjs&logoColor=white)
+![MTA GTFS-RT](https://img.shields.io/badge/MTA-GTFS--RT-0039A6)
+[![Live](https://img.shields.io/badge/live-mta.jamestannahill.com-blue)](https://mta.jamestannahill.com)
+![Last Commit](https://img.shields.io/github/last-commit/jtannahill/subway-intel)
+
 Real-time NYC subway intelligence. Live train positions, countdowns, delay detection, and smart commute timing — powered by the MTA GTFS-Realtime feed.
 
 **Live:** [mta.jamestannahill.com](https://mta.jamestannahill.com)

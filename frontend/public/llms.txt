@@ -1,0 +1,47 @@
+# mta.jamestannahill.com
+
+> Subway Intel — real-time NYC subway intelligence for Midtown Manhattan, New York. Live arrivals, delay detection, network health, track diagram, map, and trip planning, refreshed from MTA GTFS-Realtime feeds every 30 seconds.
+
+## What this is
+
+Subway Intel (https://mta.jamestannahill.com/) is a real-time NYC subway dashboard operated by James Tannahill. It polls the MTA's GTFS-Realtime feeds for every subway line group (1-7/S, A/C/E, B/D/F/M, G, J/Z, L, N/Q/R/W, Staten Island Railway) plus the MTA service-alerts feed, and turns them into live arrival boards, delay intelligence, and network status.
+
+Views include:
+
+- **Network Pulse** — per-line health (OK / delayed / alert) with average delay and headway variance, plus a live track diagram
+- **My Stations** — saved-station arrival boards with countdowns by direction
+- **Nearby** — geolocated nearest-station arrivals with an anchored track diagram
+- **Delay Intel** — heuristic delay signals computed from headway gaps and schedule deviation across all live arrivals
+- **Map** — Mapbox map of stations, physical track geometry, and live vehicle positions
+- **Plan** — point-to-point trip planning with live departures, including one-transfer routing across multi-line stations
+
+## Data sources
+
+- **MTA GTFS-Realtime feeds** (api-endpoint.mta.info) — trip updates, vehicle positions, and alerts for all NYC subway line groups, polled every 30 seconds
+- **MTA subway service alerts** — customer-facing alerts JSON feed
+- **MTA GTFS static** — stop locations, names, and scheduled travel times
+- **NYC DOT subway line geometries** — physical track GeoJSON via NYC ArcGIS
+
+## API
+
+Same-origin JSON API at https://mta.jamestannahill.com
+
+- `GET /api/stations/{stop_id}/arrivals` — Live arrivals for a GTFS stop (route, arrival time, delay seconds, direction)
+- `GET /api/commute?origin=&destination=` — Trip options between two stops with live departures; falls back to one-transfer routing
+- `GET /api/network` — Per-line health: status, avg delay, headway variance, alerts
+- `GET /api/delay-intel` — Heuristic delay signals computed across all live arrivals
+- `GET /api/stops/search?q=` — Station name search
+- `GET /api/stops/nearest?lat=&lon=` — Nearest stations to a coordinate
+- `GET /api/stops/all` — All parent stations
+- `GET /api/tracks` — Track geometry GeoJSON
+- `GET /api/subway-lines` — NYC DOT physical subway line geometries (GeoJSON)
+- `GET /api/routes/{route_id}/stops?direction=` — Ordered stop sequence for a route
+- `WS /ws` — WebSocket pushing the full live-state snapshot on every poll cycle
+
+## Pages
+
+- [Subway Intel](https://mta.jamestannahill.com/) — Single-page app with all views (Pulse, Stations, Nearby, Intel, Map, Plan)
+
+## About the operator
+
+James Tannahill — https://jamestannahill.com

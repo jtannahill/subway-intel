@@ -85,6 +85,7 @@ MTA GTFS-Realtime feed (protobuf) + camsys alerts JSON
 - [x] Map View: live vehicle positions on Mapbox GL JS
 - [x] Plan View: trip planning UI
 - [x] OG image + full social/iMessage meta tags
+- [x] SEO/AI head: canonical, JSON-LD WebApplication schema, llms.txt, noscript summary; security headers on all responses
 
 **Phase 2: ML layer**
 - [ ] Delay prediction model (trained on accumulated history)

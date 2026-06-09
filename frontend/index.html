@@ -14,6 +14,8 @@
     <title>Subway Intel — Real-time NYC Subway Intelligence</title>
     <meta name="description" content="Live NYC subway arrivals, delay intelligence, and network status for Midtown Manhattan.">
     <meta name="author" content="James Tannahill">
+    <link rel="canonical" href="https://mta.jamestannahill.com/">
+    <link rel="ai" href="/llms.txt">
     <!-- Open Graph -->
     <meta property="og:site_name" content="Subway Intel">
     <meta property="og:title" content="Subway Intel — Real-time NYC Subway Intelligence">
@@ -30,8 +32,35 @@
     <meta name="twitter:description" content="Live NYC subway arrivals, delay intelligence, and network status for Midtown Manhattan.">
     <meta name="twitter:image" content="https://mta.jamestannahill.com/og.png">
     <meta name="twitter:creator" content="@jamestannahill">
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "Subway Intel",
+      "url": "https://mta.jamestannahill.com/",
+      "description": "Live NYC subway arrivals, delay intelligence, and network status for Midtown Manhattan.",
+      "applicationCategory": "TravelApplication",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "creator": {
+        "@type": "Person",
+        "name": "James Tannahill",
+        "url": "https://jamestannahill.com"
+      }
+    }
+    </script>
   </head>
   <body>
+    <noscript>
+      <section>
+        <h1>Subway Intel — Real-time NYC Subway Intelligence</h1>
+        <p>Subway Intel is a live NYC subway dashboard for Midtown Manhattan, built on the MTA's GTFS-Realtime feeds. It shows real-time arrivals for saved and nearby stations, per-line network health, heuristic delay detection, a live track diagram, a map of stations and trains, and point-to-point trip planning. Operated by <a href="https://jamestannahill.com">James Tannahill</a>. This app requires JavaScript.</p>
+      </section>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

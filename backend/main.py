@@ -31,11 +31,28 @@ logger = logging.getLogger(__name__)
 
 POLL_INTERVAL = int(os.environ.get('GTFS_POLL_INTERVAL_SEC', '30'))
 
+# Report-Only CSP: the host is currently down, so this cannot be verified in a
+# real browser. Promote to enforcing (Content-Security-Policy) only after the
+# host is back and the browser console shows zero violation reports.
+# Covers: self-hosted assets, Mapbox GL (script/style CDN, tile/style/event
+# connects, blob workers), and the same-origin live-arrivals websocket.
+CSP_REPORT_ONLY = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline' https://api.mapbox.com; "
+    "style-src 'self' 'unsafe-inline' https://api.mapbox.com; "
+    "img-src 'self' data: blob: https://*.mapbox.com; "
+    "font-src 'self'; "
+    "connect-src 'self' ws: wss: https://api.mapbox.com https://*.mapbox.com https://events.mapbox.com; "
+    "worker-src 'self' blob:; child-src blob:; "
+    "frame-ancestors 'none'; base-uri 'self'; object-src 'none'; form-action 'self'"
+)
+
 SECURITY_HEADERS: list[tuple[bytes, bytes]] = [
     (b'strict-transport-security', b'max-age=31536000'),
     (b'x-content-type-options', b'nosniff'),
     (b'x-frame-options', b'SAMEORIGIN'),
     (b'referrer-policy', b'strict-origin-when-cross-origin'),
+    (b'content-security-policy-report-only', CSP_REPORT_ONLY.encode()),
 ]
 
 _live_state = LiveState()
